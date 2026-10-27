@@ -418,7 +418,9 @@ class HardwareCursorAndModifierOverlayView(
     private val onScanQrClicked: () -> Unit,
     private val onDisconnectClicked: () -> Unit,
     private val onSelectTransportMode: (TransportMode) -> Unit,
-    private val onCancelConnectionClicked: () -> Unit
+    private val onCancelConnectionClicked: () -> Unit,
+    private val onForgetMacClicked: () -> Unit = {},
+    private val onDismissErrorClicked: () -> Unit = {}
 ) : View(context) {
     private val cursorFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#0F172A")
@@ -534,6 +536,27 @@ class HardwareCursorAndModifierOverlayView(
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         textAlign = Paint.Align.CENTER
     }
+    private val checklistOkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#10B981")
+        style = Paint.Style.FILL
+    }
+    private val checklistWarnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#F59E0B")
+        style = Paint.Style.FILL
+    }
+    private val checklistWaitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#64748B")
+        style = Paint.Style.FILL
+    }
+    private val errorBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(240, 28, 18, 24)
+        style = Paint.Style.FILL
+    }
+    private val errorBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#EF4444")
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+    }
     private val brandIcon = runCatching {
         context.resources.getDrawable(R.mipmap.ic_launcher_foreground, context.theme)
     }.getOrNull()
@@ -551,6 +574,22 @@ class HardwareCursorAndModifierOverlayView(
     @Volatile var activeTransportMode: TransportMode = TransportMode.USB
     @Volatile var isConnecting: Boolean = false
     @Volatile var appVersion: String = "1.0.1"
+
+    // SideScreen Pro Features: Pre-Flight USB Diagnostics, Saved Mac Profile & Contextual Error Recovery
+    @Volatile var isUsbCablePlugged: Boolean = false
+    @Volatile var isUsbTunnelActive: Boolean = false
+    @Volatile var isMacHostReady: Boolean = false
+
+    @Volatile var savedMacName: String? = null
+    @Volatile var savedMacIp: String? = null
+    @Volatile var savedMacPort: Int = 9453
+    @Volatile var savedMacPin: String = ""
+    @Volatile var isSavedMacOnline: Boolean = false
+
+    @Volatile var isConnectionError: Boolean = false
+    @Volatile var errorTitle: String = "Connection Failed"
+    @Volatile var errorDiagnostic: String = ""
+    @Volatile var errorHint: String = ""
     private val filteredXY = FloatArray(2)
 
     val activeModifiersMask = AtomicInteger(0)
@@ -588,7 +627,7 @@ class HardwareCursorAndModifierOverlayView(
         if (isDisconnectedByUser || !hasReceivedVideoFrame) {
             val isPortrait = height > width
             val cardW = if (isPortrait) (width - 48f).coerceAtMost(640f) else (width - 64f).coerceAtMost(780f)
-            val cardH = if (isPortrait) 620f.coerceAtMost(height - 48f) else 530f.coerceAtMost(height - 64f)
+            val cardH = if (isPortrait) 660f.coerceAtMost(height - 48f) else 550f.coerceAtMost(height - 64f)
             val cardLeft = (width - cardW) / 2f
             val cardTop = (height - cardH) / 2f
             val cardRight = cardLeft + cardW
@@ -642,12 +681,37 @@ class HardwareCursorAndModifierOverlayView(
                 return true
             }
 
-            // D. USB Mode: Primary Connect Button
+            // D. Contextual Error State: Recovery Button or Dismiss
+            if (isConnectionError) {
+                val boxTop = segTop + segH + 16f
+                val boxH = 105f
+                val recovTop = boxTop + boxH + 16f
+                val recovH = 60f
+                val dismissTop = recovTop + recovH + 12f
+                val dismissH = 52f
+
+                if (x in (contentLeft - pad)..(contentRight + pad)) {
+                    if (y in (recovTop - pad)..(recovTop + recovH + pad)) {
+                        if (activeTransportMode == TransportMode.USB) {
+                            onConnectUsbClicked()
+                        } else {
+                            onScanQrClicked()
+                        }
+                        return true
+                    } else if (y in (dismissTop - pad)..(dismissTop + dismissH + pad)) {
+                        onDismissErrorClicked()
+                        return true
+                    }
+                }
+                return true
+            }
+
+            // E. USB Mode: Pre-Flight Diagnostic Checklist + Primary Connect Button
             if (activeTransportMode == TransportMode.USB) {
-                val infoTop = segTop + segH + 20f
-                val infoH = 68f
-                val btnTop = infoTop + infoH + 20f
-                val btnH = 68f
+                val infoTop = segTop + segH + 16f
+                val infoH = 118f
+                val btnTop = infoTop + infoH + 18f
+                val btnH = 64f
                 if (x in (contentLeft - pad)..(contentRight + pad) && y in (btnTop - pad)..(btnTop + btnH + pad)) {
                     onConnectUsbClicked()
                     return true
@@ -655,7 +719,33 @@ class HardwareCursorAndModifierOverlayView(
                 return true
             }
 
-            // D. Wi-Fi Mode: 3 Dedicated Action Buttons
+            // F. Wi-Fi Mode with Saved Mac Profile: Reconnect / Scan QR / Forget
+            if (savedMacIp != null) {
+                val infoTop = segTop + segH + 16f
+                val infoH = 104f
+                val b1Top = infoTop + infoH + 14f
+                val b1H = 60f
+                if (x in (contentLeft - pad)..(contentRight + pad) && y in (b1Top - pad)..(b1Top + b1H + pad)) {
+                    onConnectWifiClicked()
+                    return true
+                }
+
+                val b2Top = b1Top + b1H + 12f
+                val b2H = 54f
+                val splitX = contentLeft + contentW * 0.58f
+                if (y in (b2Top - pad)..(b2Top + b2H + pad)) {
+                    if (x in (contentLeft - pad)..splitX) {
+                        onScanQrClicked()
+                        return true
+                    } else if (x in splitX..(contentRight + pad)) {
+                        onForgetMacClicked()
+                        return true
+                    }
+                }
+                return true
+            }
+
+            // G. Wi-Fi Mode without Saved Profile: 3 Action Buttons (Connect, PIN, QR)
             val infoTop = segTop + segH + 16f
             val infoH = 50f
             val b1Top = infoTop + infoH + 14f
@@ -666,14 +756,14 @@ class HardwareCursorAndModifierOverlayView(
             }
 
             val b2Top = b1Top + b1H + 12f
-            val b2H = 56f
+            val b2H = 54f
             if (x in (contentLeft - pad)..(contentRight + pad) && y in (b2Top - pad)..(b2Top + b2H + pad)) {
                 onEnterPinClicked()
                 return true
             }
 
             val b3Top = b2Top + b2H + 12f
-            val b3H = 56f
+            val b3H = 54f
             if (x in (contentLeft - pad)..(contentRight + pad) && y in (b3Top - pad)..(b3Top + b3H + pad)) {
                 onScanQrClicked()
                 return true
@@ -808,6 +898,26 @@ class HardwareCursorAndModifierOverlayView(
         canvas.drawCircle(cx + 1.5f, cy + 1.5f, 3.2f, cursorTipPaint)
     }
 
+    private fun drawChecklistItem(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        text: String,
+        isOk: Boolean,
+        xText: Float,
+        yText: Float,
+        maxW: Float
+    ) {
+        val dotPaint = if (isOk) checklistOkPaint else checklistWarnPaint
+        canvas.drawCircle(cx, cy, 5.5f, dotPaint)
+        val itemPaint = Paint(statusTextPaint).apply {
+            color = if (isOk) Color.parseColor("#34D399") else Color.parseColor("#CBD5E1")
+            textSize = 16f
+            textAlign = Paint.Align.LEFT
+        }
+        drawFittedText(canvas, text, xText, yText, itemPaint, maxW)
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (width <= 0 || height <= 0) return
@@ -817,7 +927,7 @@ class HardwareCursorAndModifierOverlayView(
             canvas.drawColor(Color.parseColor("#0A0E1A"))
             val isPortrait = height > width
             val cardW = if (isPortrait) (width - 48f).coerceAtMost(640f) else (width - 64f).coerceAtMost(780f)
-            val cardH = if (isPortrait) 620f.coerceAtMost(height - 48f) else 530f.coerceAtMost(height - 64f)
+            val cardH = if (isPortrait) 660f.coerceAtMost(height - 48f) else 550f.coerceAtMost(height - 64f)
             val cardLeft = (width - cardW) / 2f
             val cardTop = (height - cardH) / 2f
             val cardRight = cardLeft + cardW
@@ -871,7 +981,7 @@ class HardwareCursorAndModifierOverlayView(
                 drawFittedText(canvas, "📶 Wireless LAN", (segMid + 4f + contentRight) / 2f, segTop + 33f, btnInactiveTextPaint, segBtnMaxW)
             }
 
-            // 2. Dynamic Content: Inactive Display vs Connecting vs USB Mode vs Wi-Fi Mode
+            // 2. Dynamic Content: Inactive Display vs Connecting vs Error vs USB vs Wi-Fi
             if (isInactiveDisplay) {
                 val boxTop = segTop + segH + 24f
                 val boxH = 96f
@@ -918,56 +1028,209 @@ class HardwareCursorAndModifierOverlayView(
                 return
             }
 
+            if (isConnectionError) {
+                val boxTop = segTop + segH + 16f
+                val boxH = 105f
+                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, errorBgPaint)
+                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, errorBorderPaint)
+
+                val errTitlePaint = Paint(titlePaint).apply {
+                    color = Color.parseColor("#EF4444")
+                    textSize = 21f
+                    textAlign = Paint.Align.CENTER
+                }
+                val errDiagPaint = Paint(subtitlePaint).apply {
+                    color = Color.parseColor("#FCA5A5")
+                    textSize = 17f
+                    textAlign = Paint.Align.CENTER
+                }
+                val errHintPaint = Paint(versionPaint).apply {
+                    color = Color.parseColor("#E2E8F0")
+                    textSize = 15f
+                    textAlign = Paint.Align.CENTER
+                }
+                drawFittedText(canvas, "⚠️ $errorTitle", (contentLeft + contentRight) / 2f, boxTop + 34f, errTitlePaint, contentW - 24f)
+                drawFittedText(canvas, errorDiagnostic, (contentLeft + contentRight) / 2f, boxTop + 62f, errDiagPaint, contentW - 24f)
+                drawFittedText(canvas, "💡 $errorHint", (contentLeft + contentRight) / 2f, boxTop + 88f, errHintPaint, contentW - 24f)
+
+                val recovTop = boxTop + boxH + 16f
+                val recovH = 60f
+                val recovText = if (isUsb) "⚡ Retry USB-C Connection" else "📷 Scan Mac QR Code to Re-Pair"
+                canvas.drawRoundRect(contentLeft, recovTop, contentRight, recovTop + recovH, 20f, 20f, primaryBtnPaint)
+                drawFittedText(canvas, recovText, (contentLeft + contentRight) / 2f, recovTop + 38f, btnTextPaint, contentW - 24f)
+
+                val dismissTop = recovTop + recovH + 12f
+                val dismissH = 52f
+                canvas.drawRoundRect(contentLeft, dismissTop, contentRight, dismissTop + dismissH, 18f, 18f, secondaryBtnPaint)
+                canvas.drawRoundRect(contentLeft, dismissTop, contentRight, dismissTop + dismissH, 18f, 18f, pillStrokePaint)
+                drawFittedText(canvas, "✕ Dismiss to Standby", (contentLeft + contentRight) / 2f, dismissTop + 33f, btnTextPaint, contentW - 24f)
+
+                drawFittedText(canvas, "v$appVersion • Contextual Error Recovery", cardLeft + cardW / 2f, dismissTop + dismissH + 28f, versionPaint, cardW - 32f)
+                return
+            }
+
             if (isUsb) {
-                // USB-C Content
-                val infoTop = segTop + segH + 20f
-                val infoH = 68f
+                // USB-C Content with Pre-Flight Diagnostics
+                val infoTop = segTop + segH + 16f
+                val infoH = 118f
                 canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, secondaryBtnPaint)
                 canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, pillStrokePaint)
-                drawFittedText(canvas, "⚡ Zero-Lag USB-C Loopback (127.0.0.1:9453)", (contentLeft + contentRight) / 2f, infoTop + 42f, textPaint, contentW - 24f)
 
-                val btnTop = infoTop + infoH + 20f
-                val btnH = 68f
-                canvas.drawRoundRect(contentLeft, btnTop, contentRight, btnTop + btnH, 22f, 22f, primaryBtnPaint)
-                drawFittedText(canvas, "⚡ Connect via USB-C Cable", (contentLeft + contentRight) / 2f, btnTop + 43f, btnTextPaint, contentW - 24f)
-
-                drawFittedText(canvas, "Requires USB cable with USB Debugging enabled on tablet", cardLeft + cardW / 2f, btnTop + btnH + 34f, versionPaint, cardW - 32f)
-                drawFittedText(canvas, "v$appVersion • Ultra-Low Latency Display Engine", cardLeft + cardW / 2f, btnTop + btnH + 62f, versionPaint, cardW - 32f)
-            } else {
-                // Wi-Fi Content
-                val infoTop = segTop + segH + 16f
-                val infoH = 50f
-                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, pillStrokePaint)
-                val wifiBadge = if (discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9") {
-                    "● Discovered: $discoveredMacName ($discoveredLanIpLabel)"
-                } else {
-                    "○ Searching for Mac via Bonjour mDNS..."
+                val chkHeaderPaint = Paint(textPaint).apply {
+                    color = Color.parseColor("#94A3B8")
+                    textSize = 15f
+                    textAlign = Paint.Align.LEFT
                 }
-                drawFittedText(canvas, wifiBadge, (contentLeft + contentRight) / 2f, infoTop + 32f, badgeTextPaint, contentW - 24f)
+                drawFittedText(canvas, "PRE-FLIGHT USB DIAGNOSTICS", contentLeft + 22f, infoTop + 24f, chkHeaderPaint, contentW - 44f)
 
-                // Action 1: Connect Wi-Fi
+                val cableOk = isUsbCablePlugged || isUsbTunnelActive
+                drawChecklistItem(
+                    canvas = canvas,
+                    cx = contentLeft + 28f,
+                    cy = infoTop + 47f,
+                    text = if (cableOk) "USB-C Cable Connected" else "USB-C Cable Disconnected (Plug cable to Mac)",
+                    isOk = cableOk,
+                    xText = contentLeft + 44f,
+                    yText = infoTop + 52f,
+                    maxW = contentW - 56f
+                )
+
+                val tunnelOk = isUsbTunnelActive
+                drawChecklistItem(
+                    canvas = canvas,
+                    cx = contentLeft + 28f,
+                    cy = infoTop + 73f,
+                    text = if (tunnelOk) "Port 9453 Loopback Active (127.0.0.1:9453)" else "Port 9453 Loopback Waiting (run 'adb reverse')",
+                    isOk = tunnelOk,
+                    xText = contentLeft + 44f,
+                    yText = infoTop + 78f,
+                    maxW = contentW - 56f
+                )
+
+                val hostOk = isMacHostReady || isUsbTunnelActive
+                drawChecklistItem(
+                    canvas = canvas,
+                    cx = contentLeft + 28f,
+                    cy = infoTop + 99f,
+                    text = if (hostOk) "HyperScreen Mac Host Ready" else "HyperScreen Mac Host Waiting",
+                    isOk = hostOk,
+                    xText = contentLeft + 44f,
+                    yText = infoTop + 104f,
+                    maxW = contentW - 56f
+                )
+
+                val btnTop = infoTop + infoH + 18f
+                val btnH = 64f
+                canvas.drawRoundRect(contentLeft, btnTop, contentRight, btnTop + btnH, 22f, 22f, primaryBtnPaint)
+                drawFittedText(canvas, "⚡ Connect via USB-C Cable", (contentLeft + contentRight) / 2f, btnTop + 41f, btnTextPaint, contentW - 24f)
+
+                drawFittedText(canvas, "Requires USB cable with USB Debugging enabled on tablet", cardLeft + cardW / 2f, btnTop + btnH + 30f, versionPaint, cardW - 32f)
+                drawFittedText(canvas, "v$appVersion • Zero-Lag 120Hz Hardware Pipeline", cardLeft + cardW / 2f, btnTop + btnH + 54f, versionPaint, cardW - 32f)
+                return
+            }
+
+            // Wi-Fi Content: Saved Mac Profile vs Discovery
+            val savedIp = savedMacIp
+            if (savedIp != null) {
+                val infoTop = segTop + segH + 16f
+                val infoH = 104f
+                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, secondaryBtnPaint)
+                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, pillStrokePaint)
+
+                val badgeStr = if (isSavedMacOnline) "● Online via Bonjour • Ready to Connect" else "○ Saved Mac Profile"
+                val bColor = if (isSavedMacOnline) Color.parseColor("#10B981") else Color.parseColor("#38BDF8")
+                val bPaint = Paint(badgeTextPaint).apply {
+                    color = bColor
+                    textSize = 16f
+                    textAlign = Paint.Align.LEFT
+                }
+                drawFittedText(canvas, badgeStr, contentLeft + 22f, infoTop + 26f, bPaint, contentW - 44f)
+
+                val namePaint = Paint(titlePaint).apply {
+                    color = Color.parseColor("#F8FAFC")
+                    textSize = 23f
+                    textAlign = Paint.Align.LEFT
+                }
+                val displayName = savedMacName ?: "Saved Mac"
+                drawFittedText(canvas, "💻 $displayName", contentLeft + 22f, infoTop + 58f, namePaint, contentW - 44f)
+
+                val pinFormatted = if (savedMacPin.isNotEmpty()) {
+                    val digits = savedMacPin.filter { it.isDigit() }
+                    if (digits.length == 8) "${digits.substring(0, 4)}-${digits.substring(4)}" else savedMacPin
+                } else ""
+                val detailStr = if (pinFormatted.isNotEmpty()) {
+                    "IP: $savedIp:$savedMacPort • PIN: $pinFormatted"
+                } else {
+                    "IP: $savedIp:$savedMacPort"
+                }
+                val detailPaint = Paint(versionPaint).apply {
+                    color = Color.parseColor("#94A3B8")
+                    textSize = 15f
+                    textAlign = Paint.Align.LEFT
+                }
+                drawFittedText(canvas, detailStr, contentLeft + 22f, infoTop + 86f, detailPaint, contentW - 44f)
+
+                // Action 1: 1-Tap Reconnect
                 val b1Top = infoTop + infoH + 14f
                 val b1H = 60f
                 canvas.drawRoundRect(contentLeft, b1Top, contentRight, b1Top + b1H, 20f, 20f, primaryBtnPaint)
-                drawFittedText(canvas, "📶 Connect Wireless LAN ($discoveredLanIpLabel)", (contentLeft + contentRight) / 2f, b1Top + 38f, btnTextPaint, contentW - 24f)
+                drawFittedText(canvas, "⚡ Reconnect to $displayName", (contentLeft + contentRight) / 2f, b1Top + 38f, btnTextPaint, contentW - 24f)
 
-                // Action 2: Enter Pairing PIN
+                // Action 2 & 3: Split Row [ 📷 Scan QR / PIN ] [ ✕ Forget This Mac ]
                 val b2Top = b1Top + b1H + 12f
-                val b2H = 56f
-                canvas.drawRoundRect(contentLeft, b2Top, contentRight, b2Top + b2H, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, b2Top, contentRight, b2Top + b2H, 18f, 18f, pillStrokePaint)
-                drawFittedText(canvas, "🔑 Enter 8-Digit Pairing PIN", (contentLeft + contentRight) / 2f, b2Top + 36f, btnTextPaint, contentW - 24f)
+                val b2H = 54f
+                val splitX = contentLeft + contentW * 0.58f
 
-                // Action 3: Scan QR Code / Manual IP
-                val b3Top = b2Top + b2H + 12f
-                val b3H = 56f
-                canvas.drawRoundRect(contentLeft, b3Top, contentRight, b3Top + b3H, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, b3Top, contentRight, b3Top + b3H, 18f, 18f, pillStrokePaint)
-                drawFittedText(canvas, "📷 Scan Mac QR Code / Manual IP", (contentLeft + contentRight) / 2f, b3Top + 36f, btnTextPaint, contentW - 24f)
+                // Left: Scan QR / PIN
+                canvas.drawRoundRect(contentLeft, b2Top, splitX - 6f, b2Top + b2H, 18f, 18f, secondaryBtnPaint)
+                canvas.drawRoundRect(contentLeft, b2Top, splitX - 6f, b2Top + b2H, 18f, 18f, pillStrokePaint)
+                drawFittedText(canvas, "📷 Scan QR / PIN", (contentLeft + splitX - 6f) / 2f, b2Top + 34f, btnTextPaint, (splitX - 6f - contentLeft) - 16f)
 
-                drawFittedText(canvas, "v$appVersion • 5GHz/6GHz Wi-Fi recommended", cardLeft + cardW / 2f, b3Top + b3H + 30f, versionPaint, cardW - 32f)
+                // Right: Forget This Mac
+                canvas.drawRoundRect(splitX + 6f, b2Top, contentRight, b2Top + b2H, 18f, 18f, secondaryBtnPaint)
+                canvas.drawRoundRect(splitX + 6f, b2Top, contentRight, b2Top + b2H, 18f, 18f, pillStrokePaint)
+                val forgetPaint = Paint(btnTextPaint).apply {
+                    color = Color.parseColor("#F87171")
+                }
+                drawFittedText(canvas, "✕ Forget", (splitX + 6f + contentRight) / 2f, b2Top + 34f, forgetPaint, (contentRight - splitX - 6f) - 16f)
+
+                drawFittedText(canvas, "v$appVersion • 5GHz/6GHz Wi-Fi recommended", cardLeft + cardW / 2f, b2Top + b2H + 28f, versionPaint, cardW - 32f)
+                return
             }
+
+            // Wi-Fi Content without Saved Profile
+            val infoTop = segTop + segH + 16f
+            val infoH = 50f
+            canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, secondaryBtnPaint)
+            canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, pillStrokePaint)
+            val wifiBadge = if (discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9") {
+                "● Discovered: $discoveredMacName ($discoveredLanIpLabel)"
+            } else {
+                "○ Searching for Mac via Bonjour mDNS..."
+            }
+            drawFittedText(canvas, wifiBadge, (contentLeft + contentRight) / 2f, infoTop + 32f, badgeTextPaint, contentW - 24f)
+
+            // Action 1: Connect Wi-Fi
+            val b1Top = infoTop + infoH + 14f
+            val b1H = 60f
+            canvas.drawRoundRect(contentLeft, b1Top, contentRight, b1Top + b1H, 20f, 20f, primaryBtnPaint)
+            drawFittedText(canvas, "📶 Connect Wireless LAN ($discoveredLanIpLabel)", (contentLeft + contentRight) / 2f, b1Top + 38f, btnTextPaint, contentW - 24f)
+
+            // Action 2: Enter Pairing PIN
+            val b2Top = b1Top + b1H + 12f
+            val b2H = 54f
+            canvas.drawRoundRect(contentLeft, b2Top, contentRight, b2Top + b2H, 18f, 18f, secondaryBtnPaint)
+            canvas.drawRoundRect(contentLeft, b2Top, contentRight, b2Top + b2H, 18f, 18f, pillStrokePaint)
+            drawFittedText(canvas, "🔑 Enter 8-Digit Pairing PIN", (contentLeft + contentRight) / 2f, b2Top + 35f, btnTextPaint, contentW - 24f)
+
+            // Action 3: Scan QR Code / Manual IP
+            val b3Top = b2Top + b2H + 12f
+            val b3H = 54f
+            canvas.drawRoundRect(contentLeft, b3Top, contentRight, b3Top + b3H, 18f, 18f, secondaryBtnPaint)
+            canvas.drawRoundRect(contentLeft, b3Top, contentRight, b3Top + b3H, 18f, 18f, pillStrokePaint)
+            drawFittedText(canvas, "📷 Scan Mac QR Code / Manual IP", (contentLeft + contentRight) / 2f, b3Top + 35f, btnTextPaint, contentW - 24f)
+
+            drawFittedText(canvas, "v$appVersion • 5GHz/6GHz Wi-Fi recommended", cardLeft + cardW / 2f, b3Top + b3H + 28f, versionPaint, cardW - 32f)
             return
         }
 
@@ -1462,6 +1725,97 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     @Volatile private var activeTransportMode: TransportMode = TransportMode.USB
     @Volatile private var currentRotationAngle: Int = 0
 
+    companion object {
+        private const val PREFS_NAME = "hyperscreen_prefs"
+        private const val KEY_SAVED_MAC_NAME = "last_mac_name"
+        private const val KEY_SAVED_MAC_IP = "last_mac_ip"
+        private const val KEY_SAVED_MAC_PORT = "last_mac_port"
+        private const val KEY_SAVED_MAC_PIN = "last_mac_pin"
+    }
+
+    private var hasSavedCurrentProfile = false
+    private val usbCheckHandler = Handler(android.os.Looper.getMainLooper())
+    private val usbCheckRunnable = object : Runnable {
+        override fun run() {
+            if (!isAppRunning.get()) return
+            if (activeTransportMode == TransportMode.USB && !cursorOverlay.hasReceivedVideoFrame) {
+                performUsbPreFlightCheck()
+            }
+            usbCheckHandler.postDelayed(this, 1200)
+        }
+    }
+
+    private fun performUsbPreFlightCheck() {
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val plugged = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, -1) ?: 0
+        val isCable = (plugged == android.os.BatteryManager.BATTERY_PLUGGED_USB ||
+            plugged == android.os.BatteryManager.BATTERY_PLUGGED_AC)
+
+        Thread {
+            val canConnect = runCatching {
+                Socket().use { s ->
+                    s.connect(InetSocketAddress("127.0.0.1", 9453), 150)
+                    true
+                }
+            }.getOrDefault(false)
+
+            runOnUiThread {
+                cursorOverlay.isUsbCablePlugged = isCable || canConnect
+                cursorOverlay.isUsbTunnelActive = canConnect
+                cursorOverlay.isMacHostReady = canConnect
+                cursorOverlay.postInvalidateOnAnimation()
+            }
+        }.start()
+    }
+
+    private fun saveMacProfile(name: String, ip: String, port: Int, pin: String) {
+        if (ip == "127.0.0.1" || ip == "localhost" || ip.isEmpty()) return
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString(KEY_SAVED_MAC_NAME, name)
+            .putString(KEY_SAVED_MAC_IP, ip)
+            .putInt(KEY_SAVED_MAC_PORT, port)
+            .putString(KEY_SAVED_MAC_PIN, pin)
+            .apply()
+        runOnUiThread {
+            cursorOverlay.savedMacName = name
+            cursorOverlay.savedMacIp = ip
+            cursorOverlay.savedMacPort = port
+            cursorOverlay.savedMacPin = pin
+            cursorOverlay.isSavedMacOnline = discoveredMacs.containsKey(ip)
+            cursorOverlay.postInvalidateOnAnimation()
+        }
+    }
+
+    private fun clearSavedMacProfile() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().clear().apply()
+        disconnectFromHost()
+        cursorOverlay.savedMacName = null
+        cursorOverlay.savedMacIp = null
+        cursorOverlay.savedMacPort = 9453
+        cursorOverlay.savedMacPin = ""
+        cursorOverlay.isSavedMacOnline = false
+        cursorOverlay.updateStatus("Mac profile forgotten • Ready to Connect", streaming = false)
+        cursorOverlay.postInvalidateOnAnimation()
+    }
+
+    private fun loadSavedMacProfile() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val ip = prefs.getString(KEY_SAVED_MAC_IP, null)
+        if (!ip.isNullOrEmpty()) {
+            val name = prefs.getString(KEY_SAVED_MAC_NAME, "HyperScreen-Mac")
+            val port = prefs.getInt(KEY_SAVED_MAC_PORT, 9453)
+            val pin = prefs.getString(KEY_SAVED_MAC_PIN, "") ?: ""
+            cursorOverlay.savedMacName = name
+            cursorOverlay.savedMacIp = ip
+            cursorOverlay.savedMacPort = port
+            cursorOverlay.savedMacPin = pin
+            cursorOverlay.isSavedMacOnline = discoveredMacs.containsKey(ip)
+            cursorOverlay.postInvalidateOnAnimation()
+        }
+    }
+
     data class DiscoveredMacInfo(
         val ip: String,
         val port: Int,
@@ -1532,6 +1886,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 isUserDisconnected = false
                 cursorOverlay.isDisconnectedByUser = false
                 cursorOverlay.isConnecting = true
+                cursorOverlay.isConnectionError = false
                 cursorOverlay.updateStatus("Connecting via USB-C...", streaming = false)
                 connectFromQrUriOrRawText("127.0.0.1:9453")
             },
@@ -1541,7 +1896,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 isUserDisconnected = false
                 cursorOverlay.isDisconnectedByUser = false
                 cursorOverlay.isConnecting = true
-                val target = "$discoveredLanHostIp:$preferredHostPort"
+                cursorOverlay.isConnectionError = false
+                val savedIp = cursorOverlay.savedMacIp
+                val target = if (savedIp != null) {
+                    "$savedIp:${cursorOverlay.savedMacPort}"
+                } else {
+                    "$discoveredLanHostIp:$preferredHostPort"
+                }
                 cursorOverlay.updateStatus("Connecting via Wi-Fi ($target)...", streaming = false)
                 connectFromQrUriOrRawText(target)
             },
@@ -1558,17 +1919,25 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 if (isActiveSession.get() || cursorOverlay.isConnecting) {
                     cancelConnectionAttempt()
                 }
+                cursorOverlay.isConnectionError = false
                 activeTransportMode = mode
                 cursorOverlay.activeTransportMode = mode
                 if (mode == TransportMode.USB) {
                     preferredHostIp = "127.0.0.1"
                     cursorOverlay.updateStatus("USB-C Selected • Zero-Lag Tunnel", streaming = false)
+                    performUsbPreFlightCheck()
                 } else {
-                    preferredHostIp = discoveredLanHostIp
+                    preferredHostIp = cursorOverlay.savedMacIp ?: discoveredLanHostIp
                     cursorOverlay.updateStatus("Wireless LAN Selected • Ready to Connect", streaming = false)
                 }
             },
             onCancelConnectionClicked = {
+                cancelConnectionAttempt()
+            },
+            onForgetMacClicked = {
+                clearSavedMacProfile()
+            },
+            onDismissErrorClicked = {
                 cancelConnectionAttempt()
             }
         ).also {
@@ -1582,6 +1951,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }.getOrNull() ?: "1.0.1"
             it.appVersion = vName
         }
+
+        loadSavedMacProfile()
+        performUsbPreFlightCheck()
 
         // Hide Android system mouse pointer during display sessions so physical tablet mice/trackpads
         // do not render a duplicate Android arrow on top of the native macOS cursor
@@ -1651,6 +2023,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         if (!cursorOverlay.hasReceivedVideoFrame) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         }
+        usbCheckHandler.removeCallbacks(usbCheckRunnable)
+        usbCheckHandler.post(usbCheckRunnable)
         runCatching {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             if (wakeLock == null) {
@@ -1674,6 +2048,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     override fun onPause() {
+        usbCheckHandler.removeCallbacks(usbCheckRunnable)
         runCatching {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
@@ -1686,7 +2061,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         isUserDisconnected = true
         isActiveSession.set(false)
+        hasSavedCurrentProfile = false
         cursorOverlay.isConnecting = false
+        cursorOverlay.isConnectionError = false
         cursorOverlay.hasReceivedVideoFrame = false
         runCatching { activeStreamSocket.getAndSet(null)?.close() }
         runCatching { activeUdpSocket.getAndSet(null)?.close() }
@@ -1700,7 +2077,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         isUserDisconnected = true
         isActiveSession.set(false)
+        hasSavedCurrentProfile = false
         cursorOverlay.isConnecting = false
+        cursorOverlay.isConnectionError = false
         cursorOverlay.isDisconnectedByUser = true
         cursorOverlay.hasReceivedVideoFrame = false
         val modeLabel = if (activeTransportMode == TransportMode.USB) "USB-C" else "Wireless LAN"
@@ -1798,9 +2177,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
                 val formattedPin = "${rawDigits.substring(0, 4)}-${rawDigits.substring(4)}"
                 if (matched != null) {
+                    saveMacProfile(matched.name, matched.ip, matched.port, formattedPin)
                     cursorOverlay.updateStatus("Found ${matched.name}! Connecting with PIN $formattedPin...", streaming = false)
                     connectFromQrUriOrRawText("${matched.ip}:${matched.port}")
                 } else {
+                    saveMacProfile("HyperScreen-Mac", discoveredLanHostIp, preferredHostPort, formattedPin)
                     cursorOverlay.updateStatus("Connecting to $discoveredLanHostIp with PIN $formattedPin...", streaming = false)
                     connectFromQrUriOrRawText("$discoveredLanHostIp:$preferredHostPort")
                 }
@@ -2348,6 +2729,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 )
                                 if (frameBytes > 0) {
                                     cursorOverlay.isConnecting = false
+                                    cursorOverlay.isConnectionError = false
                                     if (!cursorOverlay.hasReceivedVideoFrame) {
                                         val activeBanner = if (isUsbLoopback) {
                                             "USB-C • 1920x1200 @ ${panelHz}Hz HiDPI"
@@ -2355,6 +2737,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                             "Wi-Fi • 1920x1200 @ ${panelHz}Hz ($targetHost)"
                                         }
                                         cursorOverlay.updateStatus(activeBanner, streaming = true)
+                                        if (!isUsbLoopback && !hasSavedCurrentProfile) {
+                                            hasSavedCurrentProfile = true
+                                            val mName = cursorOverlay.discoveredMacName.ifEmpty { "HyperScreen-Mac" }
+                                            saveMacProfile(mName, targetHost, targetPort, cursorOverlay.discoveredMacPin)
+                                        }
                                     }
                                     directOutFrameBuf.position(0)
                                     decoder?.submitAnnexBNaluDirect(directOutFrameBuf, frameBytes)
@@ -2368,6 +2755,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                     val rawReserved = directPktBuf.getShort(18).toInt() and 0xFFFF
                                     val isDisplayActive = (rawReserved and 0x8000) != 0 && w > 0 && h > 0
                                     val rot = rawReserved and 0x01FF
+                                    if (!isUsbLoopback && !hasSavedCurrentProfile) {
+                                        hasSavedCurrentProfile = true
+                                        val mName = cursorOverlay.discoveredMacName.ifEmpty { "HyperScreen-Mac" }
+                                        saveMacProfile(mName, targetHost, targetPort, cursorOverlay.discoveredMacPin)
+                                    }
                                     if (isDisplayActive) {
                                         onDisplayReconfigured(w, h, rot)
                                     } else {
@@ -2409,9 +2801,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     runOnUiThread {
                         cursorOverlay.isConnecting = false
                         if (isUsbLoopback && !cursorOverlay.hasReceivedVideoFrame) {
-                            cursorOverlay.updateStatus("USB-C not ready. Enable Developer Options > USB Debugging, or tap Wi-Fi", streaming = false)
+                            cursorOverlay.isConnectionError = true
+                            cursorOverlay.errorTitle = "USB-C Connection Failed"
+                            cursorOverlay.errorDiagnostic = "No response from Mac on 127.0.0.1:9453"
+                            cursorOverlay.errorHint = "Check cable & verify 'adb reverse tcp:9453 tcp:9453'"
+                            cursorOverlay.updateStatus("USB-C connection failed", streaming = false)
                         } else if (!isUsbLoopback && !cursorOverlay.hasReceivedVideoFrame) {
-                            cursorOverlay.updateStatus("Wi-Fi connection failed ($targetHost:$targetPort). Tap Wi-Fi to retry", streaming = false)
+                            cursorOverlay.isConnectionError = true
+                            cursorOverlay.errorTitle = "Wi-Fi Connection Failed"
+                            cursorOverlay.errorDiagnostic = "Could not connect to $targetHost:$targetPort"
+                            cursorOverlay.errorHint = "Ensure both Mac & tablet are on 5GHz/6GHz Wi-Fi"
+                            cursorOverlay.updateStatus("Wi-Fi connection failed", streaming = false)
                         }
                     }
                     Thread.sleep(1200)
@@ -2456,6 +2856,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 discoveredMacs[hostIp] = DiscoveredMacInfo(hostIp, resolved.port, sName, pin)
                                 cursorOverlay.discoveredMacName = sName
                                 cursorOverlay.discoveredMacPin = pin
+                                if (cursorOverlay.savedMacIp == hostIp) {
+                                    cursorOverlay.isSavedMacOnline = true
+                                }
                                 cursorOverlay.postInvalidateOnAnimation()
                             }
                         }
@@ -2514,7 +2917,11 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 if (udpTimeoutCount >= 5 && cursorOverlay.isConnecting) {
                                     runOnUiThread {
                                         cursorOverlay.isConnecting = false
-                                        cursorOverlay.updateStatus("Wi-Fi host not responding (${hostAddress.hostAddress}). Tap Wi-Fi to retry", streaming = false)
+                                        cursorOverlay.isConnectionError = true
+                                        cursorOverlay.errorTitle = "Wi-Fi Host Not Responding"
+                                        cursorOverlay.errorDiagnostic = "Mac host at ${hostAddress.hostAddress} stopped responding"
+                                        cursorOverlay.errorHint = "Scan Mac QR code or verify Wi-Fi network"
+                                        cursorOverlay.updateStatus("Wi-Fi host not responding", streaming = false)
                                     }
                                 }
                                 socket.send(DatagramPacket(helloBytes, helloBytes.size, target))
@@ -2564,8 +2971,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 val compFid = frameMeta[0].toInt()
                                 lastDecodedFrameId = compFid
                                 cursorOverlay.isConnecting = false
+                                cursorOverlay.isConnectionError = false
                                 if (!cursorOverlay.hasReceivedVideoFrame) {
                                     cursorOverlay.updateStatus("Wi-Fi • 1920x1200 @ ${panelHz}Hz (${hostAddress.hostAddress})", streaming = true)
+                                    val hIp = hostAddress.hostAddress ?: ""
+                                    if (hIp.isNotEmpty() && !hIp.startsWith("127.") && !hasSavedCurrentProfile) {
+                                        hasSavedCurrentProfile = true
+                                        val mName = cursorOverlay.discoveredMacName.ifEmpty { "HyperScreen-Mac" }
+                                        saveMacProfile(mName, hIp, port, cursorOverlay.discoveredMacPin)
+                                    }
                                 }
                                 outFrameBuf.position(0)
                                 decoder?.submitAnnexBNaluDirect(outFrameBuf, frameBytes)
@@ -2577,6 +2991,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 val rawReserved = pktBuf.getShort(34).toInt() and 0xFFFF
                                 val isDisplayActive = (rawReserved and 0x8000) != 0 && w > 0 && h > 0
                                 val rot = rawReserved and 0x01FF
+                                val hIp = hostAddress.hostAddress ?: ""
+                                if (hIp.isNotEmpty() && !hIp.startsWith("127.") && !hasSavedCurrentProfile) {
+                                    hasSavedCurrentProfile = true
+                                    val mName = cursorOverlay.discoveredMacName.ifEmpty { "HyperScreen-Mac" }
+                                    saveMacProfile(mName, hIp, port, cursorOverlay.discoveredMacPin)
+                                }
                                 if (isDisplayActive) {
                                     onDisplayReconfigured(w, h, rot)
                                 } else {
