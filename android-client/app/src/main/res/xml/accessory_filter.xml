@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the AOA v2 strings sent by macOS IOUSBHostAOAEngine (control request 52) -->
+    <usb-accessory
+        manufacturer="HyperScreen"
+        model="HyperScreen Pro Display"
+        version="1.0" />
+</resources>

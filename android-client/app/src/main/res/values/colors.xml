@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#0A0E1A</color>
+    <color name="hyperscreen_cyan">#00F2FE</color>
+    <color name="hyperscreen_blue">#38BDF8</color>
+    <color name="hyperscreen_purple">#818CF8</color>
+    <color name="hyperscreen_violet">#A855F7</color>
+</resources>

@@ -1,0 +1,181 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="30%" r="80%" fx="50%" fy="20%">
+      <stop offset="0%" stop-color="#1A2138" />
+      <stop offset="45%" stop-color="#0E1220" />
+      <stop offset="100%" stop-color="#06080F" />
+    </radialGradient>
+
+    <!-- Bevel & Border Gradients -->
+    <linearGradient id="squircleBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8" />
+      <stop offset="30%" stop-color="#818CF8" stop-opacity="0.3" />
+      <stop offset="70%" stop-color="#C084FC" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.4" />
+    </linearGradient>
+
+    <!-- Screen Gradients -->
+    <linearGradient id="macScreenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.98" />
+    </linearGradient>
+
+    <linearGradient id="tabletScreenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#241B35" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#0F1123" stop-opacity="0.98" />
+    </linearGradient>
+
+    <!-- Neon Hyper Link Gradients -->
+    <linearGradient id="cyanNeon" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="50%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#818CF8" />
+    </linearGradient>
+
+    <linearGradient id="violetNeon" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#818CF8" />
+      <stop offset="50%" stop-color="#A855F7" />
+      <stop offset="100%" stop-color="#EC4899" />
+    </linearGradient>
+
+    <linearGradient id="bridgeGrad" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="35%" stop-color="#38BDF8" />
+      <stop offset="65%" stop-color="#A855F7" />
+      <stop offset="100%" stop-color="#F43F5E" />
+    </linearGradient>
+
+    <linearGradient id="coreBeam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="50%" stop-color="#E0F2FE" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+
+    <!-- Glow Filters -->
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur1" />
+      <feGaussianBlur stdDeviation="16" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="intenseGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blurSmall" />
+      <feGaussianBlur stdDeviation="12" result="blurMed" />
+      <feGaussianBlur stdDeviation="24" result="blurLarge" />
+      <feMerge>
+        <feMergeNode in="blurLarge" />
+        <feMergeNode in="blurMed" />
+        <feMergeNode in="blurSmall" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.6" />
+    </filter>
+
+    <!-- Clip Paths for Screen Contents -->
+    <clipPath id="macClip">
+      <rect x="74" y="132" width="168" height="248" rx="16" />
+    </clipPath>
+    <clipPath id="tabletClip">
+      <rect x="270" y="132" width="168" height="248" rx="16" />
+    </clipPath>
+  </defs>
+
+  <!-- Squircle Base with Drop Shadow -->
+  <rect x="24" y="24" width="464" height="464" rx="104" fill="url(#bgGrad)" filter="url(#dropShadow)" />
+  <rect x="24" y="24" width="464" height="464" rx="104" fill="none" stroke="url(#squircleBorder)" stroke-width="3" />
+
+  <!-- Subtle Ambient Glow Orbs -->
+  <circle cx="160" cy="256" r="120" fill="#00F2FE" opacity="0.12" filter="url(#intenseGlow)" />
+  <circle cx="352" cy="256" r="120" fill="#A855F7" opacity="0.12" filter="url(#intenseGlow)" />
+  <ellipse cx="256" cy="256" rx="90" ry="40" fill="#38BDF8" opacity="0.18" filter="url(#intenseGlow)" />
+
+  <!-- Sub-8ms Speed Waves / Refresh Grid Pattern -->
+  <g opacity="0.08" stroke="#FFFFFF" stroke-width="1">
+    <line x1="80" y1="180" x2="432" y2="180" stroke-dasharray="4 6" />
+    <line x1="80" y1="220" x2="432" y2="220" stroke-dasharray="4 6" />
+    <line x1="80" y1="292" x2="432" y2="292" stroke-dasharray="4 6" />
+    <line x1="80" y1="332" x2="432" y2="332" stroke-dasharray="4 6" />
+  </g>
+
+  <!-- ==================== LEFT DISPLAY (Host / Mac) ==================== -->
+  <g id="hostDisplay">
+    <!-- Outer Bezel -->
+    <rect x="72" y="130" width="172" height="252" rx="18" fill="#141B2D" stroke="#334155" stroke-width="2.5" />
+    <!-- Screen Surface -->
+    <rect x="76" y="134" width="164" height="244" rx="14" fill="url(#macScreenGrad)" />
+
+    <!-- Screen Bezel Highlight / Top Specular Reflection -->
+    <path d="M78 136 C110 136, 206 136, 238 136 C239 136, 240 137, 240 138 L236 186 C180 180, 110 170, 76 186 L76 138 C76 137, 77 136, 78 136 Z" fill="#FFFFFF" opacity="0.05" />
+
+    <!-- Host Glass Grid / Latency Indicator -->
+    <g clip-path="url(#macClip)">
+      <circle cx="94" cy="152" r="3.5" fill="#EF4444" opacity="0.8" />
+      <circle cx="106" cy="152" r="3.5" fill="#F59E0B" opacity="0.8" />
+      <circle cx="118" cy="152" r="3.5" fill="#10B981" opacity="0.8" />
+      <!-- Content Wireframe Lines -->
+      <line x1="94" y1="174" x2="160" y2="174" stroke="#38BDF8" stroke-width="3" stroke-linecap="round" opacity="0.4" />
+      <line x1="94" y1="188" x2="135" y2="188" stroke="#64748B" stroke-width="2.5" stroke-linecap="round" opacity="0.3" />
+      <line x1="94" y1="330" x2="140" y2="330" stroke="#64748B" stroke-width="2" stroke-linecap="round" opacity="0.3" />
+      <line x1="94" y1="342" x2="180" y2="342" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" opacity="0.3" />
+    </g>
+  </g>
+
+  <!-- ==================== RIGHT DISPLAY (Client / Android) ==================== -->
+  <g id="clientDisplay">
+    <!-- Outer Bezel -->
+    <rect x="268" y="130" width="172" height="252" rx="18" fill="#181329" stroke="#473869" stroke-width="2.5" />
+    <!-- Screen Surface -->
+    <rect x="272" y="134" width="164" height="244" rx="14" fill="url(#tabletScreenGrad)" />
+
+    <!-- Specular Reflection -->
+    <path d="M274 136 C306 136, 402 136, 434 136 C435 136, 436 137, 436 138 L432 186 C376 180, 306 170, 272 186 L272 138 C272 137, 273 136, 274 136 Z" fill="#FFFFFF" opacity="0.05" />
+
+    <!-- Client Status / Touch Gestures -->
+    <g clip-path="url(#tabletClip)">
+      <circle cx="414" cy="152" r="4" fill="#A855F7" opacity="0.7" />
+      <!-- Content Wireframe Lines -->
+      <line x1="352" y1="174" x2="418" y2="174" stroke="#A855F7" stroke-width="3" stroke-linecap="round" opacity="0.4" />
+      <line x1="375" y1="188" x2="418" y2="188" stroke="#64748B" stroke-width="2.5" stroke-linecap="round" opacity="0.3" />
+      <!-- 120Hz Badge pill -->
+      <rect x="356" y="326" width="62" height="20" rx="6" fill="#A855F7" fill-opacity="0.25" stroke="#C084FC" stroke-width="1.2" />
+      <text x="387" y="340" fill="#E9D5FF" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="700" text-anchor="middle" letter-spacing="0.5">120Hz</text>
+    </g>
+  </g>
+
+  <!-- ==================== HYPER LINK / 'H' SPEED MOTIF ==================== -->
+  <!-- Left Vertical Stem of H (embedded in Mac display) -->
+  <path d="M176 160 L176 352" stroke="url(#cyanNeon)" stroke-width="18" stroke-linecap="round" filter="url(#neonGlow)" />
+  <path d="M176 168 L176 344" stroke="#E0F2FE" stroke-width="6" stroke-linecap="round" />
+
+  <!-- Right Vertical Stem of H (embedded in Tablet display) -->
+  <path d="M336 160 L336 352" stroke="url(#violetNeon)" stroke-width="18" stroke-linecap="round" filter="url(#neonGlow)" />
+  <path d="M336 168 L336 344" stroke="#FDF4FF" stroke-width="6" stroke-linecap="round" />
+
+  <!-- Ultra-Fast Cross Bridge (Mac to Android Hyper Beam) -->
+  <!-- Glowing Trail / Field -->
+  <path d="M168 256 Q 212 242, 256 242 Q 300 242, 344 256" stroke="url(#bridgeGrad)" stroke-width="26" stroke-linecap="round" fill="none" opacity="0.3" filter="url(#intenseGlow)" />
+  <!-- Main Laser Conduit -->
+  <path d="M168 256 L344 256" stroke="url(#bridgeGrad)" stroke-width="16" stroke-linecap="round" filter="url(#neonGlow)" />
+  <!-- Core White Filament (<8ms Optical Center) -->
+  <path d="M176 256 L336 256" stroke="url(#coreBeam)" stroke-width="5" stroke-linecap="round" />
+
+  <!-- Velocity Chevrons across the bridge -->
+  <path d="M236 246 L248 256 L236 266" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" filter="url(#neonGlow)" />
+  <path d="M264 246 L276 256 L264 266" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" filter="url(#neonGlow)" />
+
+  <!-- Central Pulse Energy Spark (sub-8ms zero-copy sync node) -->
+  <circle cx="256" cy="256" r="14" fill="url(#cyanNeon)" filter="url(#intenseGlow)" />
+  <circle cx="256" cy="256" r="7" fill="#FFFFFF" />
+  
+  <!-- Stylized Pointer / Stylus Precision Dot -->
+  <circle cx="340" cy="216" r="5" fill="#38BDF8" filter="url(#neonGlow)" />
+  <circle cx="340" cy="216" r="2" fill="#FFFFFF" />
+</svg>

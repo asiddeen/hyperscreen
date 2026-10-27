@@ -1,0 +1,117 @@
+# ====================================================================
+# HyperScreen Monorepo Git Ignore
+# Covers: macOS Host (Swift/SPM/AppKit), Android Client (Kotlin/Gradle/NDK),
+#         Shared Core (C++20/CMake), Binaries, and Developer Secrets
+# ====================================================================
+
+# --------------------------------------------------------------------
+# 1. OS & System Junk Files
+# --------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --------------------------------------------------------------------
+# 2. Local Developer Config & Secrets (NEVER COMMIT)
+# --------------------------------------------------------------------
+# Local Android SDK / NDK path
+local.properties
+android-client/local.properties
+
+# Android Keystores & Signing Keys
+*.keystore
+*.jks
+*.p12
+
+# Environment Variables & Tokens
+.env
+.env.*
+!.env.example
+
+# --------------------------------------------------------------------
+# 3. Project Root Build & Distribution Artifacts
+# --------------------------------------------------------------------
+/build/
+/main
+*.dmg
+*.app
+*.log
+
+# --------------------------------------------------------------------
+# 4. macOS Host (Swift Package Manager / Xcode)
+# --------------------------------------------------------------------
+macos-host/.build/
+macos-host/.swiftpm/
+.build/
+.swiftpm/
+
+# Xcode Project & Workspace user state
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+xcuserdata/
+*.xcuserdatad/
+DerivedData/
+*.dSYM/
+
+# --------------------------------------------------------------------
+# 5. Android Client (Gradle / AGP / NDK / CMake)
+# --------------------------------------------------------------------
+# Gradle Caches & Reports
+.gradle/
+android-client/.gradle/
+build/
+android-client/build/
+android-client/app/build/
+
+# Android NDK CMake Build Trees & Symbol Caches
+.cxx/
+android-client/app/.cxx/
+
+# Compiled Android Binaries & Packages
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Gradle Profiler & Memory Dumps
+*.hprof
+.gradletasknamecache
+
+# --------------------------------------------------------------------
+# 6. Shared C++20 Core & Native Object Files
+# --------------------------------------------------------------------
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.ninja
+*.ninja_deps
+*.ninja_log
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# --------------------------------------------------------------------
+# 7. IDEs & Editors
+# --------------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.swp
+*.swo
+*~
+*.bak
