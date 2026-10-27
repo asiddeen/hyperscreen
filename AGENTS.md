@@ -25,3 +25,16 @@
 - **Tablet Display Keep-Awake & Camera2 Preview**:
   - `MainActivity` must maintain `FLAG_KEEP_SCREEN_ON`, `FLAG_SHOW_WHEN_LOCKED`, `FLAG_TURN_SCREEN_ON`, `SurfaceView.keepScreenOn = true`, and an active `PowerManager.SCREEN_BRIGHT_WAKE_LOCK` in `onResume()`.
   - Camera2 `TextureView` previews in landscape must use a square container (`1:1`) and apply `configureCameraTransform` (`Matrix.setRectToRect` + `postRotate`) for `Surface.ROTATION_90` / `Surface.ROTATION_270`.
+
+## 4. UI Invariants & Input Guardrails (macOS AppKit & Android Canvas/Views)
+- **macOS AppKit / SwiftUI Menu Buttons**:
+  - NEVER wrap custom card containers (`HStack`, `ZStack`, `.background`, `.overlay`) inside a `Menu { ... } label: { ... }` with `.menuStyle(.borderlessButton)`. macOS AppKit strips backgrounds, borders, padding, and layout hierarchies. Keep the card outside the `Menu` and position `Menu` strictly as the discrete action button on the right.
+  - In step/onboarding cards with visual assets (e.g. QR codes), place title, instructions, and copyable text on the left with a `Spacer()` and align the visual asset to the right for layout consistency across cards.
+  - Always format 8-digit Pairing PINs as `XXXX-XXXX` for display and clipboard copying while preserving raw digits for protocol/deep-link payloads.
+- **Android Canvas Text Bounding & Auto-Formatted EditText**:
+  - NEVER call raw `canvas.drawText()` for variable or telemetry strings (e.g. Bonjour hostnames, IPs, mode statuses). All Canvas text must route through a bounded scaling helper (`drawFittedText`) with proportional `textSize` reduction and `…` ellipsis fallback.
+  - When creating auto-hyphenated PIN or code inputs (e.g. `XXXX-XXXX`) in `EditText`:
+    - NEVER use `InputType.TYPE_CLASS_NUMBER` alone, as its internal `NumberKeyListener` strips hyphens and triggers `IndexOutOfBoundsException` during cursor positioning.
+    - Set `inputType = InputType.TYPE_CLASS_PHONE` and explicitly assign `keyListener = DigitsKeyListener.getInstance("0123456789-")` AFTER setting `inputType`.
+    - Always clamp cursor selection using `pinInput.text?.length ?: 0` rather than the unverified formatted string length.
+    - Normalize input strings by stripping hyphens (`filter { it.isDigit() }`) before matching against Bonjour discovery or initiating socket connections.
