@@ -91,6 +91,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private lateinit var surfaceView: SurfaceView
     private lateinit var cursorOverlay: HardwareCursorAndModifierOverlayView
     private var decoder: LowLatencyMediaCodec? = null
+    private var audioPlayer: LowLatencyAudioPlayer? = null
     private var usbTransport: UsbAccessoryTransport? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -587,6 +588,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             activeUdpTarget.set(null)
             runCatching { decoder?.stop() }
             decoder = null
+            runCatching { audioPlayer?.stop() }
+            audioPlayer = null
             isActiveSession.set(false)
             cursorOverlay.hasReceivedVideoFrame = false
             cursorOverlay.isConnecting = false
@@ -634,6 +637,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         // dark background (#0A0E1A) in onDraw() while keeping the underlying Surface and touch pipeline active!
         runCatching { decoder?.stop() }
         decoder = null
+        runCatching { audioPlayer?.stop() }
+        audioPlayer = null
 
         runCatching { activeTcpOut.getAndSet(null)?.close() }
         runCatching { activeStreamSocket.getAndSet(null)?.close() }
@@ -1411,6 +1416,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                     directOutFrameBuf.position(0)
                                     decoder?.submitAnnexBNaluDirect(directOutFrameBuf, frameBytes)
                                 }
+                            } else if (pktType == 0x04 /* HS_PKT_AUDIO_OPUS / PCM */) {
+                                if (payloadLen > 16) {
+                                    if (audioPlayer == null && isSurfaceAlive.get()) {
+                                        audioPlayer = LowLatencyAudioPlayer().also { it.start() }
+                                    }
+                                    audioPlayer?.writePcm(payloadBuf, 16, payloadLen - 16)
+                                }
                             } else if (pktType == 0x09 /* HS_PKT_PONG_TELEMETRY */) {
                                 if (payloadLen >= 16) {
                                     directPktBuf.clear()
@@ -1746,6 +1758,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                     runCatching { socket.send(DatagramPacket(pingPacket, pingPacket.size, target)) }
                                 }
                             }
+                        } else if (pktType == 0x04 /* HS_PKT_AUDIO_OPUS / PCM */) {
+                            if (len > 32) {
+                                if (audioPlayer == null && isSurfaceAlive.get()) {
+                                    audioPlayer = LowLatencyAudioPlayer().also { it.start() }
+                                }
+                                audioPlayer?.writePcm(recvArray, 32, len - 32)
+                            }
                         } else if (pktType == 0x01 /* HS_PKT_SERVER_HELLO */) {
                             if (len >= 16 + 32) {
                                 val w = pktBuf.getInt(16)
@@ -1912,6 +1931,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         usbTransport = null
         decoder?.stop()
         decoder = null
+        audioPlayer?.stop()
+        audioPlayer = null
     }
 
     override fun onDestroy() {

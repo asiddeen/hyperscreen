@@ -3,6 +3,7 @@ import AppKit
 import CoreGraphics
 import CoreImage
 import CoreMedia
+import CoreAudio
 import CoreVideo
 import IOSurface
 import ApplicationServices
@@ -34,6 +35,7 @@ public final class HyperScreenCoordinator: ObservableObject, @unchecked Sendable
     @Published public var showOnboardingAndQR: Bool = false
     @Published public var userManuallyStopped: Bool = false
     @Published public var userPreferredYUV444: Bool = UserDefaults.standard.bool(forKey: "userPreferredYUV444")
+    @Published public var isAudioStreamingEnabled: Bool = UserDefaults.standard.object(forKey: "isAudioStreamingEnabled") as? Bool ?? true
     @Published public var lastStatusMessage: String? = nil
 
     // Active connection preference & granular status telemetry
@@ -126,7 +128,7 @@ public final class HyperScreenCoordinator: ObservableObject, @unchecked Sendable
                 inputEcosystem.virtualDisplayBounds = CGDisplayBounds(displayID)
 
                 try videoEncoder.configure(config: currentConfig, bitrateMbps: bitrateMbps)
-                try await captureEngine.startCapture(displayID: displayID, config: currentConfig)
+                try await captureEngine.startCapture(displayID: displayID, config: currentConfig, captureAudio: isAudioStreamingEnabled)
 
                 transport.sendServerHello(config: currentConfig, isStreaming: isStreaming, bitrateMbps: bitrateMbps)
                 videoEncoder.requestImmediateKeyframe()
@@ -159,7 +161,7 @@ public final class HyperScreenCoordinator: ObservableObject, @unchecked Sendable
             inputEcosystem.startCursorTracking240Hz()
 
             try videoEncoder.configure(config: currentConfig, bitrateMbps: bitrateMbps)
-            try await captureEngine.startCapture(displayID: displayID, config: currentConfig)
+            try await captureEngine.startCapture(displayID: displayID, config: currentConfig, captureAudio: isAudioStreamingEnabled)
             isStreaming = true
             lastStatusMessage = nil
             transport.sendServerHello(config: currentConfig, isStreaming: true, bitrateMbps: bitrateMbps)
@@ -225,8 +227,82 @@ extension HyperScreenCoordinator: SCStreamEngineDelegate {
     }
 
     nonisolated public func streamEngineDidCaptureAudioSample(_ sampleBuffer: CMSampleBuffer, captureTimestampUs: UInt64) {
-        // Low-latency audio forwarding hook
-        _ = captureTimestampUs
+        var blockBuffer: CMBlockBuffer?
+        var audioBufferList = AudioBufferList()
+        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: &audioBufferList,
+            bufferListSize: MemoryLayout<AudioBufferList>.size,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+        guard status == noErr, let _ = blockBuffer else { return }
+
+        guard let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else {
+            return
+        }
+
+        let numBuffers = Int(audioBufferList.mNumberBuffers)
+        guard numBuffers > 0 else { return }
+
+        let sampleRate = UInt32(asbd.mSampleRate)
+        let channels = UInt16(asbd.mChannelsPerFrame)
+        let numFrames = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard numFrames > 0 else { return }
+
+        var audioHeader = hs_audio_header_t(
+            capture_pts_us: captureTimestampUs,
+            sample_rate: sampleRate,
+            channels: 2,
+            frame_samples: UInt16(numFrames)
+        )
+        var pcmData = Data(capacity: MemoryLayout<hs_audio_header_t>.size + numFrames * 4)
+        pcmData.append(Data(bytes: &audioHeader, count: MemoryLayout<hs_audio_header_t>.size))
+
+        let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+        let isNonInterleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+
+        withUnsafePointer(to: audioBufferList.mBuffers) { buffersPtr in
+            if isFloat {
+                if isNonInterleaved && numBuffers >= 2 {
+                    guard let leftPtr = buffersPtr.advanced(by: 0).pointee.mData?.assumingMemoryBound(to: Float32.self),
+                          let rightPtr = buffersPtr.advanced(by: 1).pointee.mData?.assumingMemoryBound(to: Float32.self) else { return }
+                    let outStart = pcmData.count
+                    pcmData.count += numFrames * 4
+                    pcmData.withUnsafeMutableBytes { rawBuf in
+                        let outPtr = rawBuf.baseAddress!.advanced(by: outStart).assumingMemoryBound(to: Int16.self)
+                        for i in 0..<numFrames {
+                            let l = max(-1.0, min(1.0, leftPtr[i]))
+                            let r = max(-1.0, min(1.0, rightPtr[i]))
+                            outPtr[i * 2] = Int16(l * 32767.0)
+                            outPtr[i * 2 + 1] = Int16(r * 32767.0)
+                        }
+                    }
+                } else if let interleavedPtr = buffersPtr.pointee.mData?.assumingMemoryBound(to: Float32.self) {
+                    let totalSamples = numFrames * Int(channels)
+                    let outStart = pcmData.count
+                    pcmData.count += totalSamples * 2
+                    pcmData.withUnsafeMutableBytes { rawBuf in
+                        let outPtr = rawBuf.baseAddress!.advanced(by: outStart).assumingMemoryBound(to: Int16.self)
+                        for i in 0..<totalSamples {
+                            let s = max(-1.0, min(1.0, interleavedPtr[i]))
+                            outPtr[i] = Int16(s * 32767.0)
+                        }
+                    }
+                }
+            } else if let rawDataPtr = buffersPtr.pointee.mData {
+                let bytesCount = min(Int(buffersPtr.pointee.mDataByteSize), numFrames * 4)
+                pcmData.append(rawDataPtr.assumingMemoryBound(to: UInt8.self), count: bytesCount)
+            }
+        }
+
+        if pcmData.count > MemoryLayout<hs_audio_header_t>.size {
+            transport.sendControlOrAudioPacket(type: HS_PKT_AUDIO_OPUS, payload: pcmData)
+        }
     }
 }
 
@@ -1348,6 +1424,15 @@ final class HyperScreenAppDelegate: NSObject, NSApplicationDelegate, NSWindowDel
         clamshellItem.state = coordinator.headlessClamshellMode ? .on : .off
         statusMenu.addItem(clamshellItem)
 
+        let audioItem = NSMenuItem(
+            title: "Stream Mac Audio to Tablet",
+            action: #selector(toggleAudioStreaming(_:)),
+            keyEquivalent: ""
+        )
+        audioItem.target = self
+        audioItem.state = coordinator.isAudioStreamingEnabled ? .on : .off
+        statusMenu.addItem(audioItem)
+
         statusMenu.addItem(.separator())
 
         // 5. Settings… (⌘,) - Renamed and streamlined
@@ -1437,6 +1522,20 @@ final class HyperScreenAppDelegate: NSObject, NSApplicationDelegate, NSWindowDel
     @objc private func toggleClamshellAwake(_ sender: AnyObject?) {
         coordinator.headlessClamshellMode.toggle()
         rebuildStatusMenu()
+    }
+
+    @objc private func toggleAudioStreaming(_ sender: AnyObject?) {
+        coordinator.isAudioStreamingEnabled.toggle()
+        UserDefaults.standard.set(coordinator.isAudioStreamingEnabled, forKey: "isAudioStreamingEnabled")
+        rebuildStatusMenu()
+        if coordinator.isStreaming {
+            Task {
+                await coordinator.stopDisplaySession()
+                coordinator.userManuallyStopped = false
+                await coordinator.startDisplaySession()
+                rebuildStatusMenu()
+            }
+        }
     }
 
     @objc private func copyPairingPIN(_ sender: AnyObject?) {
