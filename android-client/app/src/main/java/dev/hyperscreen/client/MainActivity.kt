@@ -215,6 +215,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             cursorOverlay.savedMacPort = port
             cursorOverlay.savedMacPin = pin
             cursorOverlay.isSavedMacOnline = discoveredMacs.containsKey(ip)
+            cursorOverlay.discoveredMacCount = discoveredMacs.size
             cursorOverlay.postInvalidateOnAnimation()
         }
     }
@@ -244,6 +245,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             cursorOverlay.savedMacPort = port
             cursorOverlay.savedMacPin = pin
             cursorOverlay.isSavedMacOnline = discoveredMacs.containsKey(ip)
+            cursorOverlay.discoveredMacCount = discoveredMacs.size
             cursorOverlay.postInvalidateOnAnimation()
         }
     }
@@ -258,17 +260,46 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (UsbManager.ACTION_USB_ACCESSORY_ATTACHED == intent.action ||
-                "dev.hyperscreen.USB_PERMISSION" == intent.action
-            ) {
-                isUserDisconnected = false
-                if (::cursorOverlay.isInitialized) {
-                    cursorOverlay.isDisconnectedByUser = false
-                    cursorOverlay.activeTransportMode = TransportMode.USB
+            when (intent.action) {
+                UsbManager.ACTION_USB_ACCESSORY_ATTACHED, "dev.hyperscreen.USB_PERMISSION" -> {
+                    cursorOverlay.isUsbCablePlugged = true
+                    if (activeTransportMode != TransportMode.USB || !isActiveSession.get()) {
+                        isUserDisconnected = false
+                        if (::cursorOverlay.isInitialized) {
+                            cursorOverlay.isDisconnectedByUser = false
+                            cursorOverlay.activeTransportMode = TransportMode.USB
+                            cursorOverlay.updateStatus("USB-C Connected • Handing over to Zero-Lag Tunnel...", streaming = cursorOverlay.hasReceivedVideoFrame)
+                        }
+                        activeTransportMode = TransportMode.USB
+                        preferredHostIp = "127.0.0.1"
+                        runCatching { activeUdpSocket.get()?.close() }
+                        runCatching { activeStreamSocket.get()?.close() }
+                        ensureStreamLoopRunning()
+                    }
                 }
-                activeTransportMode = TransportMode.USB
-                preferredHostIp = "127.0.0.1"
-                runCatching { activeStreamSocket.get()?.close() }
+                UsbManager.ACTION_USB_ACCESSORY_DETACHED -> {
+                    cursorOverlay.isUsbCablePlugged = false
+                    cursorOverlay.isUsbTunnelActive = false
+                    if (activeTransportMode == TransportMode.USB && isActiveSession.get()) {
+                        val fallbackIp = cursorOverlay.savedMacIp ?: if (discoveredLanHostIp != "192.168.18.9") discoveredLanHostIp else null
+                        if (!fallbackIp.isNullOrEmpty()) {
+                            activeTransportMode = TransportMode.WIFI
+                            preferredHostIp = fallbackIp
+                            if (::cursorOverlay.isInitialized) {
+                                cursorOverlay.activeTransportMode = TransportMode.WIFI
+                                cursorOverlay.updateStatus("USB Unplugged • Handing over to Wi-Fi ($fallbackIp)...", streaming = cursorOverlay.hasReceivedVideoFrame)
+                            }
+                            runCatching { activeStreamSocket.get()?.close() }
+                            ensureStreamLoopRunning()
+                        } else {
+                            if (::cursorOverlay.isInitialized) {
+                                cursorOverlay.updateStatus("USB Cable Unplugged • Ready to Connect", streaming = false)
+                                cursorOverlay.hasReceivedVideoFrame = false
+                            }
+                            isActiveSession.set(false)
+                        }
+                    }
+                }
             }
         }
     }
@@ -334,12 +365,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 cursorOverlay.isConnecting = true
                 cursorOverlay.isConnectionError = false
                 val savedIp = cursorOverlay.savedMacIp
-                if (savedIp != null) {
+                if (discoveredMacs.size > 1 && (savedIp == null || !cursorOverlay.isSavedMacOnline)) {
+                    showSelectMacHostDialog()
+                } else if (savedIp != null) {
                     val target = "$savedIp:${cursorOverlay.savedMacPort}"
                     cursorOverlay.updateStatus("Connecting via Wi-Fi ($target)...", streaming = false)
                     connectFromQrUriOrRawText(target)
-                } else if (discoveredMacs.size > 1) {
-                    showSelectMacHostDialog()
                 } else {
                     val target = "$discoveredLanHostIp:$preferredHostPort"
                     cursorOverlay.updateStatus("Connecting via Wi-Fi ($target)...", streaming = false)
@@ -379,6 +410,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             },
             onDismissErrorClicked = {
                 cancelConnectionAttempt()
+            },
+            onSelectHostClicked = {
+                showSelectMacHostDialog()
             }
         ).also {
             it.keepScreenOn = true
@@ -450,6 +484,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         val filter = IntentFilter().apply {
             addAction(UsbManager.ACTION_USB_ACCESSORY_ATTACHED)
+            addAction(UsbManager.ACTION_USB_ACCESSORY_DETACHED)
             addAction("dev.hyperscreen.USB_PERMISSION")
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -714,25 +749,46 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun showSelectMacHostDialog() {
         val macs = discoveredMacs.values.toList()
         if (macs.isEmpty()) {
-            showPairingPinDialog()
+            showManualMacIpDialog()
             return
         }
-        val options = macs.map { "${it.name} (${it.ip})" }.toTypedArray()
+        val options = macs.map { mac ->
+            val isCurrentSaved = (mac.ip == cursorOverlay.savedMacIp)
+            val badge = if (isCurrentSaved) " ★ Saved" else ""
+            "💻 ${mac.name}$badge\n    ${mac.ip}:${mac.port}"
+        }.toTypedArray()
+
+        val p = cursorOverlay.palette
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Select Mac Host on Wi-Fi")
+            .setTitle("Select Mac Host (${macs.size} found on Wi-Fi)")
             .setItems(options) { _, which ->
                 val selected = macs[which]
                 discoveredLanHostIp = selected.ip
                 cursorOverlay.discoveredLanIpLabel = selected.ip
                 cursorOverlay.discoveredMacName = selected.name
+                cursorOverlay.discoveredMacPin = selected.pin
                 preferredHostPort = selected.port
-                showPairingPinDialog()
+
+                activeTransportMode = TransportMode.WIFI
+                cursorOverlay.activeTransportMode = TransportMode.WIFI
+                isUserDisconnected = false
+                cursorOverlay.isDisconnectedByUser = false
+                cursorOverlay.isConnecting = true
+                cursorOverlay.isConnectionError = false
+
+                val target = "${selected.ip}:${selected.port}"
+                cursorOverlay.updateStatus("Connecting to ${selected.name} ($target)...", streaming = false)
+                connectFromQrUriOrRawText(target)
             }
             .setNegativeButton("Cancel", null)
+            .setNeutralButton("Manual IP / QR") { _, _ ->
+                showManualMacIpDialog()
+            }
             .create()
 
         dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(cursorOverlay.palette.muted)
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(p.muted)
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(p.secondaryBtnText)
         }
         dialog.show()
     }
@@ -765,7 +821,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     surface = holder.surface,
                     width = 1920,
                     height = 1200,
-                    refreshRateHz = getDeviceRefreshRate()
+                    refreshRateHz = getDeviceRefreshRate(),
+                    onStatsUpdated = { fps, decodeLatencyUs ->
+                        cursorOverlay.liveFps = fps
+                        cursorOverlay.liveDecodeLatencyUs = decodeLatencyUs
+                        cursorOverlay.postInvalidateOnAnimation()
+                    }
                 )
                 dec.start()
                 decoder = dec
@@ -1220,6 +1281,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val hdrBuf = ByteArray(16)
             val payloadBuf = ByteArray(65536)
             var lastDecodedFrameId = 0
+            var bitrateBytes = 0L
+            var lastBitrateNs = System.nanoTime()
 
             while (isAppRunning.get()) {
                 val targetHost = preferredHostIp
@@ -1305,6 +1368,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 val r = inp.read(payloadBuf, readPayload, payloadLen - readPayload)
                                 if (r < 0) throw java.io.EOFException()
                                 readPayload += r
+                            }
+
+                            bitrateBytes += (16 + payloadLen)
+                            val nowNs = System.nanoTime()
+                            if (nowNs - lastBitrateNs >= 1_000_000_000L) {
+                                cursorOverlay.liveBitrateMbps = (bitrateBytes * 8f) / 1_000_000f
+                                bitrateBytes = 0L
+                                lastBitrateNs = nowNs
                             }
 
                             if (pktType == 0x02 /* HS_PKT_VIDEO_SLICE */ || pktType == 0x03 /* HS_PKT_VIDEO_FEC */) {
@@ -1476,6 +1547,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                         }
                     }
                 }
+                cursorOverlay.discoveredMacCount = discoveredMacs.size
                 if (cursorOverlay.discoveredMacName == sName) {
                     val nextMac = discoveredMacs.values.firstOrNull()
                     if (nextMac != null) {
@@ -1507,6 +1579,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 discoveredMacs[hostIp] = DiscoveredMacInfo(hostIp, resolved.port, sName, pin)
                                 cursorOverlay.discoveredMacName = sName
                                 cursorOverlay.discoveredMacPin = pin
+                                cursorOverlay.discoveredMacCount = discoveredMacs.size
                                 if (cursorOverlay.savedMacIp == hostIp) {
                                     cursorOverlay.isSavedMacOnline = true
                                 }
@@ -1559,6 +1632,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     var lastDecodedFrameId = 0
                     var lastNackSentTimeMs = 0L
                     var recentLossCount = 0
+                    var bitrateBytes = 0L
+                    var lastBitrateNs = System.nanoTime()
 
                     while (isAppRunning.get() && !isBackgrounded.get() && !isUserDisconnected && !Thread.currentThread().isInterrupted && activeUdpSocket.get() === socket) {
                         val received = runCatching {
@@ -1590,6 +1665,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
                         val len = dg.length
                         if (len < 16) continue
+
+                        bitrateBytes += len
+                        val nowNs = System.nanoTime()
+                        if (nowNs - lastBitrateNs >= 1_000_000_000L) {
+                            cursorOverlay.liveBitrateMbps = (bitrateBytes * 8f) / 1_000_000f
+                            bitrateBytes = 0L
+                            lastBitrateNs = nowNs
+                        }
 
                         pktBuf.clear()
                         pktBuf.put(recvArray, 0, len)

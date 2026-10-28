@@ -21,7 +21,8 @@ class LowLatencyMediaCodec(
     private var width: Int,
     private var height: Int,
     private val refreshRateHz: Int = 90,
-    private val useAv1: Boolean = false
+    private val useAv1: Boolean = false,
+    private val onStatsUpdated: ((fps: Int, decodeLatencyUs: Int) -> Unit)? = null
 ) : Choreographer.FrameCallback {
 
     private var codec: MediaCodec? = null
@@ -32,6 +33,8 @@ class LowLatencyMediaCodec(
     @Volatile private var lastKeyframeBytes: ByteArray? = null
     @Volatile var lastDecodeLatencyUs: Int = 4000
     private var renderedFramesCount = 0L
+    private var fpsFrames = 0
+    private var lastFpsNs = System.nanoTime()
 
     fun start() {
         startDecoderInternal(stage = 0)
@@ -100,6 +103,14 @@ class LowLatencyMediaCodec(
                     }
                     mc.releaseOutputBuffer(index, true)
                     renderedFramesCount++
+                    val nowNs = System.nanoTime()
+                    fpsFrames++
+                    if (nowNs - lastFpsNs >= 1_000_000_000L) {
+                        val currentFps = fpsFrames
+                        fpsFrames = 0
+                        lastFpsNs = nowNs
+                        onStatsUpdated?.invoke(currentFps, lastDecodeLatencyUs)
+                    }
                     if (renderedFramesCount == 1L || renderedFramesCount % 120L == 0L) {
                         Log.i("HyperScreen", "Rendered video frames: $renderedFramesCount (stage=$stage, lat=${lastDecodeLatencyUs}us)")
                     }

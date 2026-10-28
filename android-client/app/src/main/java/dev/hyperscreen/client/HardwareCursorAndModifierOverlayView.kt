@@ -28,7 +28,8 @@ class HardwareCursorAndModifierOverlayView(
     private val onSelectTransportMode: (TransportMode) -> Unit,
     private val onCancelConnectionClicked: () -> Unit,
     private val onForgetMacClicked: () -> Unit = {},
-    private val onDismissErrorClicked: () -> Unit = {}
+    private val onDismissErrorClicked: () -> Unit = {},
+    private val onSelectHostClicked: () -> Unit = {}
 ) : View(context) {
 
     private fun isSystemInDarkTheme(): Boolean {
@@ -275,9 +276,14 @@ class HardwareCursorAndModifierOverlayView(
     @Volatile var hasReceivedVideoFrame: Boolean = false
     @Volatile var isDisconnectedByUser: Boolean = false
     @Volatile var isHudCollapsed: Boolean = false
+    @Volatile var liveFps: Int = 0
+    @Volatile var liveBitrateMbps: Float = 0f
+    @Volatile var liveDecodeLatencyUs: Int = 0
+    @Volatile var liveLossCount: Int = 0
     @Volatile var discoveredLanIpLabel: String = "192.168.18.9"
     @Volatile var discoveredMacName: String = "HyperScreen-Mac"
     @Volatile var discoveredMacPin: String = ""
+    @Volatile var discoveredMacCount: Int = 0
     @Volatile var activeTransportMode: TransportMode = TransportMode.USB
     @Volatile var isConnecting: Boolean = false
     @Volatile var appVersion: String = "1.0.1"
@@ -442,6 +448,13 @@ class HardwareCursorAndModifierOverlayView(
             if (savedMacIp != null) {
                 val infoTop = segTop + segH + 16f
                 val infoH = 104f
+                if (x in (contentLeft - pad)..(contentRight + pad) && y in (infoTop - pad)..(infoTop + infoH + pad)) {
+                    if (discoveredMacCount > 1 || !isSavedMacOnline) {
+                        onSelectHostClicked()
+                        return true
+                    }
+                }
+
                 val b1Top = infoTop + infoH + 14f
                 val b1H = 60f
                 if (x in (contentLeft - pad)..(contentRight + pad) && y in (b1Top - pad)..(b1Top + b1H + pad)) {
@@ -464,9 +477,16 @@ class HardwareCursorAndModifierOverlayView(
                 return true
             }
 
-            // G. Wi-Fi Mode without Saved Profile: 3 Action Buttons (Connect, PIN, QR)
+            // G. Wi-Fi Mode without Saved Profile: 3 Action Buttons (Connect, PIN, QR) + Discovery Card Tap
             val infoTop = segTop + segH + 16f
             val infoH = 50f
+            if (x in (contentLeft - pad)..(contentRight + pad) && y in (infoTop - pad)..(infoTop + infoH + pad)) {
+                if (discoveredMacCount > 1 || discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9") {
+                    onSelectHostClicked()
+                    return true
+                }
+            }
+
             val b1Top = infoTop + infoH + 14f
             val b1H = 60f
             if (x in (contentLeft - pad)..(contentRight + pad) && y in (b1Top - pad)..(b1Top + b1H + pad)) {
@@ -908,8 +928,13 @@ class HardwareCursorAndModifierOverlayView(
                 canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, panelBgPaint)
                 canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, panelBorderPaint)
 
-                val badgeStr = if (isSavedMacOnline) "● Online via Bonjour • Ready to Connect" else "○ Saved Mac Profile"
-                val bColor = if (isSavedMacOnline) palette.success else palette.subtitle
+                val badgeStr = when {
+                    isSavedMacOnline && discoveredMacCount > 1 -> "● Online • $discoveredMacCount Macs found (Tap to switch)"
+                    isSavedMacOnline -> "● Online via Bonjour • Ready to Connect"
+                    discoveredMacCount > 0 -> "○ Saved Profile • $discoveredMacCount other Mac(s) found (Tap to switch)"
+                    else -> "○ Saved Mac Profile"
+                }
+                val bColor = if (isSavedMacOnline || discoveredMacCount > 0) palette.success else palette.subtitle
                 val bPaint = Paint(badgeTextPaint).apply {
                     color = bColor
                     textSize = 15f
@@ -977,13 +1002,13 @@ class HardwareCursorAndModifierOverlayView(
             val infoH = 50f
             canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, panelBgPaint)
             canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, panelBorderPaint)
-            val wifiBadge = if (discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9") {
-                "● Discovered: $discoveredMacName ($discoveredLanIpLabel)"
-            } else {
-                "○ Searching for Mac via Bonjour mDNS..."
+            val wifiBadge = when {
+                discoveredMacCount > 1 -> "● $discoveredMacName ($discoveredMacCount Macs found • Tap to switch)"
+                discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9" -> "● Discovered: $discoveredMacName ($discoveredLanIpLabel)"
+                else -> "○ Searching for Mac via Bonjour mDNS..."
             }
             val discoveryPaint = Paint(badgeTextPaint).apply {
-                color = if (discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9") palette.success else palette.muted
+                color = if (discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9" || discoveredMacCount > 0) palette.success else palette.muted
             }
             drawFittedText(canvas, wifiBadge, (contentLeft + contentRight) / 2f, infoTop + 32f, discoveryPaint, contentW - 24f)
 
@@ -1023,10 +1048,10 @@ class HardwareCursorAndModifierOverlayView(
             drawMacVectorCursor(canvas, cx, cy)
         }
 
-        // C. If HUD is Collapsed: Render minimal top-right pill ("⚡ HUD ▾") with high-contrast frosted backing
+        // C. If HUD is Collapsed: Render minimal top-right pill ("⚡ 120 FPS ▾" or "⚡ HUD ▾")
         if (isHudCollapsed) {
             val colRight = width - 24f
-            val colLeft = colRight - 165f
+            val colLeft = colRight - 175f
             val colTop = 20f
             val colBottom = 74f
             canvas.drawRoundRect(colLeft + 1f, colTop + 3f, colRight + 1f, colBottom + 5f, 27f, 27f, pillShadowPaint)
@@ -1036,13 +1061,14 @@ class HardwareCursorAndModifierOverlayView(
                 color = palette.body
                 textSize = 18f
             }
-            drawFittedText(canvas, "⚡ HUD ▾", (colLeft + colRight) / 2f, colTop + 35f, colTextPaint, (colRight - colLeft) - 16f)
+            val colLabel = if (hasReceivedVideoFrame && liveFps > 0) "⚡ ${liveFps} FPS ▾" else "⚡ HUD ▾"
+            drawFittedText(canvas, colLabel, (colLeft + colRight) / 2f, colTop + 35f, colTextPaint, (colRight - colLeft) - 16f)
             return
         }
 
-        // D. Expanded Top-Right Pro Control Bar (Status | QR/IP | Disconnect | Hide)
+        // D. Expanded Top-Right Pro Control Bar (Status & Live Telemetry | QR/IP | Disconnect | Hide)
         val barRight = width - 24f
-        val barLeft = (barRight - 690f).coerceAtLeast(24f)
+        val barLeft = (barRight - 760f).coerceAtLeast(24f)
         val barTop = 20f
         val barBottom = 84f
         canvas.drawRoundRect(barLeft + 1f, barTop + 3f, barRight + 1f, barBottom + 5f, 32f, 32f, pillShadowPaint)
@@ -1056,7 +1082,25 @@ class HardwareCursorAndModifierOverlayView(
         val statusMaxW = ((qrLeft - 12f) - (barLeft + 44f)).coerceAtLeast(60f)
         canvas.drawCircle(barLeft + 26f, (barTop + barBottom) / 2f, 8f, checklistOkHaloPaint)
         canvas.drawCircle(barLeft + 26f, (barTop + barBottom) / 2f, 4.5f, checklistOkPaint)
-        drawFittedText(canvas, connectionStatusText, barLeft + 42f, barTop + 38f, statusTextPaint, statusMaxW)
+
+        if (hasReceivedVideoFrame && liveFps > 0) {
+            val statsTitlePaint = Paint(statusTextPaint).apply {
+                textSize = 15f
+            }
+            drawFittedText(canvas, connectionStatusText, barLeft + 42f, barTop + 27f, statsTitlePaint, statusMaxW)
+            val statsSubtitlePaint = Paint(statusTextPaint).apply {
+                textSize = 12f
+                typeface = Typeface.MONOSPACE
+                color = palette.success
+            }
+            val latencyMs = String.format(java.util.Locale.US, "%.1f", liveDecodeLatencyUs / 1000f)
+            val bitrateMbps = String.format(java.util.Locale.US, "%.1f", liveBitrateMbps)
+            val lossStr = if (liveLossCount > 0) " • $liveLossCount drops" else ""
+            val statsStr = "⚡ ${liveFps} FPS • ${latencyMs}ms • ${bitrateMbps}Mbps$lossStr"
+            drawFittedText(canvas, statsStr, barLeft + 42f, barTop + 47f, statsSubtitlePaint, statusMaxW)
+        } else {
+            drawFittedText(canvas, connectionStatusText, barLeft + 42f, barTop + 38f, statusTextPaint, statusMaxW)
+        }
 
         // QR / IP Button
         canvas.drawRoundRect(qrLeft, barTop + 10f, discLeft - 10f, barBottom - 10f, 22f, 22f, secondaryBtnPaint)
