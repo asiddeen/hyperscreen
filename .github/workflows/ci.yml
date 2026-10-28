@@ -1,0 +1,176 @@
+name: HyperScreen CI / CD
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: C++20 Core Unit Tests
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -S core -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Core Tests
+        run: cmake --build build --config Release -j4
+
+      - name: Run Core Tests (CRC-16, 0ms FEC, RingBuffer, 1-Euro)
+        run: ctest --test-dir build --output-on-failure
+
+  macos-host:
+    name: macOS Host (Swift 6 + VideoToolbox)
+    runs-on: macos-14
+    needs: [ core-tests ]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer || true
+
+      - name: Build macOS Host
+        run: swift build -c release --package-path macos-host
+
+      - name: Package macOS App Bundle & DMG
+        run: |
+          mkdir -p build
+          APP_VERSION="$(cat VERSION | tr -d '[:space:]')"
+          APP_BUNDLE="build/HyperScreen.app"
+          BIN_PATH="macos-host/.build/release/HyperScreenHost"
+          
+          mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+          cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/HyperScreenHost"
+          chmod +x "$APP_BUNDLE/Contents/MacOS/HyperScreenHost"
+          
+          if [ -d "macos-host/Resources" ]; then
+            cp -R macos-host/Resources/* "$APP_BUNDLE/Contents/Resources/" 2>/dev/null || true
+          fi
+          
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          BUILD_NUM=$(( 100000 + COMMIT_COUNT ))
+          
+          cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>HyperScreenHost</string>
+              <key>CFBundleIdentifier</key>
+              <string>dev.hyperscreen.host</string>
+              <key>CFBundleName</key>
+              <string>HyperScreen</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${APP_VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${BUILD_NUM}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>14.0</string>
+              <key>LSUIElement</key>
+              <true/>
+              <key>NSSupportsAutomaticGraphicsSwitching</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          codesign --force --deep --sign - "$APP_BUNDLE"
+          
+          DMG_NAME="HyperScreen-${APP_VERSION}-macOS.dmg"
+          hdiutil create -volname "HyperScreen Installer" -srcfolder "$APP_BUNDLE" -ov -format UDZO "build/${DMG_NAME}"
+
+      - name: Upload macOS DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyperscreen-macos-dmg
+          path: build/*.dmg
+
+  android-client:
+    name: Android Client (MediaCodec + NDK 16KB Page Size)
+    runs-on: ubuntu-latest
+    needs: [ core-tests ]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle Packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build Android Client APK
+        run: |
+          cd android-client
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyperscreen-android-apk
+          path: android-client/app/build/outputs/apk/debug/app-debug.apk
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ macos-host, android-client ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: hyperscreen-macos-dmg
+          path: release-artifacts
+
+      - name: Download Android Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: hyperscreen-android-apk
+          path: release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
