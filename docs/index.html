@@ -480,7 +480,7 @@
         <li><a href="#comparison">Benchmarks</a></li>
         <li><a href="#install">Install</a></li>
         <li>
-          <a href="https://github.com/hyperscreen/hyperscreen" class="btn-github" target="_blank" rel="noopener">
+          <a href="https://github.com/asiddeen/hyperscreen" class="btn-github" target="_blank" rel="noopener">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
             </svg>
@@ -511,13 +511,13 @@
       </p>
 
       <div class="cta-group">
-        <a href="https://github.com/hyperscreen/hyperscreen/releases/latest" class="btn btn-primary">
+        <a href="https://github.com/asiddeen/hyperscreen/releases/latest" class="btn btn-primary">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
           </svg>
           <span>Download for macOS (.dmg)</span>
         </a>
-        <a href="https://github.com/hyperscreen/hyperscreen/releases/latest" class="btn btn-secondary">
+        <a href="https://github.com/asiddeen/hyperscreen/releases/latest" class="btn btn-secondary">
           <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.552 0 .9993.4486.9993 1.0003s-.4473 1.0003-.9993 1.0003m-11.046 0c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.5511 0 .9993.4486.9993 1.0003s-.4482 1.0003-.9993 1.0003m11.4045-6.02l1.996-3.4565c.0837-.145.034-3315-.111-.4153-.1442-.0837-.3307-.034-.4144.111l-2.0253 3.508C15.658 8.7844 13.882 8.441 12 8.441s-3.658.3434-5.3218 1.0286L4.6529 5.9616c-.0837-.145-.2702-.1947-.4144-.111-.145.0838-.1947.2703-.111.4153l1.996 3.4565C2.688 11.642 0 15.006 0 19.5h24c0-4.494-2.688-7.858-6.1185-10.1786"/>
           </svg>
@@ -579,8 +579,8 @@
     <!-- Comparison Table -->
     <section id="comparison">
       <div class="section-title">
-        <h2>Benchmark Comparison</h2>
-        <p>How HyperScreen stacks up against industry alternatives on identical 2560x1600 @ 120Hz display workloads.</p>
+        <h2>Architecture &amp; Protocol Comparison</h2>
+        <p>How HyperScreen's low-latency hardware pipeline compares to conventional display streaming architectures on 2560x1600 @ 120Hz workloads.</p>
       </div>
 
       <div class="table-card">
@@ -588,55 +588,55 @@
           <table>
             <thead>
               <tr>
-                <th>Feature / Metric</th>
+                <th>Feature / Pipeline Stage</th>
                 <th>HyperScreen Pro</th>
-                <th>SideScreen</th>
-                <th>Duet Display</th>
-                <th>Spacedesk</th>
+                <th>Standard ADB Mirroring</th>
+                <th>TCP Virtual Display Apps</th>
+                <th>Legacy Remote Desktop (VNC/RDP)</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><strong>Glass-to-Glass Latency</strong></td>
-                <td class="highlight-cell"><strong>&lt; 8 ms</strong></td>
-                <td>22 ms</td>
-                <td>35 ms</td>
-                <td>45 ms</td>
+                <td><strong>Pipeline Decode Latency</strong></td>
+                <td class="highlight-cell"><strong>&lt; 8 ms (Hardware Pipeline)</strong></td>
+                <td>20 – 30 ms</td>
+                <td>35 – 50 ms</td>
+                <td>60 – 100+ ms</td>
               </tr>
               <tr>
                 <td><strong>Refresh Rates</strong></td>
                 <td class="highlight-cell"><strong>120Hz / 144Hz HiDPI</strong></td>
-                <td>60Hz (capped)</td>
+                <td>60Hz (Frame Capped)</td>
                 <td>60Hz</td>
-                <td>60Hz</td>
+                <td>30 – 60Hz (Variable)</td>
               </tr>
               <tr>
-                <td><strong>USB-C Protocol</strong></td>
-                <td class="highlight-cell"><strong>Zero-ADB AOA v2 + Loopback</strong></td>
-                <td>Requires ADB / Dev Options</td>
-                <td>Proprietary driver</td>
-                <td>TCP only</td>
+                <td><strong>USB Transport</strong></td>
+                <td class="highlight-cell"><strong>Zero-ADB AOA v2 + Direct Loopback</strong></td>
+                <td>Requires ADB &amp; Developer Mode</td>
+                <td>Virtual Network Adapter</td>
+                <td>TCP Tunneling only</td>
               </tr>
               <tr>
-                <td><strong>Audio Latency</strong></td>
-                <td class="highlight-cell"><strong>Sub-10ms (48kHz Stereo)</strong></td>
-                <td>No Audio</td>
-                <td>60 ms</td>
-                <td>80 ms</td>
+                <td><strong>Audio Pipeline</strong></td>
+                <td class="highlight-cell"><strong>Sub-10ms (48kHz Stereo PCM)</strong></td>
+                <td>No Audio / Desynced</td>
+                <td>50 – 80 ms (Buffered)</td>
+                <td>High Latency / Desynced</td>
               </tr>
               <tr>
-                <td><strong>Loss Recovery</strong></td>
-                <td class="highlight-cell"><strong>0ms GF(2^8) FEC</strong></td>
+                <td><strong>Wireless Loss Recovery</strong></td>
+                <td class="highlight-cell"><strong>0ms GF(2^8) Cauchy FEC</strong></td>
                 <td>TCP retransmission drop</td>
-                <td>TCP retry stall</td>
-                <td>TCP stall</td>
+                <td>TCP retry stall / Head-of-line</td>
+                <td>Stall on packet drop</td>
               </tr>
               <tr>
-                <td><strong>Stylus Input</strong></td>
-                <td class="highlight-cell"><strong>Pressure + Tilt + Prediction</strong></td>
-                <td>Touch only</td>
-                <td>Paid subscription</td>
-                <td>No tilt/pressure</td>
+                <td><strong>Stylus &amp; Pointer</strong></td>
+                <td class="highlight-cell"><strong>Pressure + Tilt + 1-Euro Filter</strong></td>
+                <td>Basic touch / Emulated mouse</td>
+                <td>Touch only / Subscription</td>
+                <td>Standard mouse emulation</td>
               </tr>
             </tbody>
           </table>
@@ -682,7 +682,7 @@
       <span>Engineered with Google DeepMind Antigravity</span>
     </a>
     <p class="footer-text">
-      HyperScreen Pro is open source software released under the <a href="https://github.com/hyperscreen/hyperscreen/blob/main/LICENSE" style="color: var(--primary);">MIT License</a>.
+      HyperScreen Pro is open source software released under the <a href="https://github.com/asiddeen/hyperscreen/blob/main/LICENSE" style="color: var(--primary);">MIT License</a>.
     </p>
   </footer>
 </body>

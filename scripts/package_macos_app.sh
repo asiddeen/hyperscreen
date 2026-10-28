@@ -111,10 +111,10 @@ cask "hyperscreen" do
   version "${APP_VERSION}"
   sha256 "$DMG_SHA256"
 
-  url "https://github.com/hyperscreen/hyperscreen/releases/download/v#{version}/HyperScreen-#{version}-macOS.dmg"
+  url "https://github.com/asiddeen/hyperscreen/releases/download/v#{version}/HyperScreen-#{version}-macOS.dmg"
   name "HyperScreen Pro"
   desc "Ultra-low-latency 120Hz USB-C & Wireless second display for macOS and Android"
-  homepage "https://github.com/hyperscreen/hyperscreen"
+  homepage "https://github.com/asiddeen/hyperscreen"
 
   depends_on macos: ">= :sonoma"
 
