@@ -4,9 +4,11 @@
 - **macOS Host (`HyperScreen.app`)**:
   - Always build, sign, benchmark, and relaunch via:
     `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/package_macos_app.sh`
+  - In `Package.swift`, header search paths passed to Clang in `unsafeFlags` MUST always be relative (e.g. `-I../core/include`). NEVER hardcode absolute machine paths (`/Users/<user>/...`).
   - Menu bar icons (`NSStatusBarButton.image`) MUST keep `isTemplate = true` so macOS automatically inverts them in Dark and Light modes.
 - **Android Client (`app-debug.apk`)**:
-  - Keep `gradle-wrapper.properties` pinned to a Gradle version compatible with the active AGP (`gradle-9.3.1-bin.zip` with `AGP 9.0.0`). Do NOT hardcode machine-specific paths like `org.gradle.java.home` in `gradle.properties`.
+  - Keep `gradle-wrapper.properties` pinned to a Gradle version compatible with the active AGP (`gradle-9.3.1-bin.zip` with `AGP 9.0.0`).
+  - NEVER hardcode machine-specific paths like `org.gradle.java.home` in project-level `gradle.properties` (breaks Linux and CI runners). Pass `JAVA_HOME` via CLI or user-level `~/.gradle/gradle.properties`.
   - Always execute builds with `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleDebug` (requires `BypassSandbox: true` for Gradle daemon loopback IPC).
   - Keep `-Wl,-z,max-page-size=16384` in `CMakeLists.txt` `target_link_options` for Android 15+ 16KB page size compatibility.
   - After installing via `adb install -r`, always run `adb reverse tcp:9453 tcp:9453` so the zero-lag USB-C loopback tunnel (`127.0.0.1:9453`) is active alongside Wireless LAN.
@@ -19,6 +21,10 @@
     (Verifies clean git state, runs core tests, packages macOS DMG and Android APK locally, bumps `VERSION`, creates annotated tag `v*`, and publishes to GitHub).
   - Git hooks in `.githooks/` auto-bump and amend `VERSION` on commit. Activate with `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/install_git_hooks.sh`.
   - Both Android `versionCode` and macOS `CFBundleVersion` dynamically calculate strictly monotonic build codes from Git commit count: `(major * 100000) + (minor * 10000) + gitCommitCount`.
+- **CI/CD & Cloud Runner Quota Preservation**:
+  - Commits and PRs to `main` must strictly run fast, lightweight verification on `ubuntu-latest` (~15–20s, 0 macOS minutes).
+  - NEVER run macOS cloud runners (`macos-14`) on ordinary commits (consumes 10x minutes multiplier on GitHub Actions free tier).
+  - All official release binaries (`HyperScreen-*.dmg` and `*.apk`) must be packaged natively on your local Mac via `zsh scripts/release.sh auto` and published directly via the GitHub CLI.
 
 ## 2. Hardware Video Pipeline Invariants (macOS VideoToolbox -> Android MediaCodec)
 - **Android `MediaCodec` (`LowLatencyMediaCodec`)**:
@@ -53,3 +59,6 @@
   - Dynamically configure `WindowInsetsController.setSystemBarsAppearance` in fullscreen mode to invert status/navigation bar icons to match `palette.isDark`.
   - Floating streaming HUD overlays (top-right control bar and bottom-left modifier bar) must feature dual-layer ambient drop shadows and frosted glass backgrounds so text and buttons remain 100% legible over both bright white and dark Mac desktop streams.
   - Custom dialogs (`AlertDialog`) and input containers must bind theme colors dynamically (e.g. `dialog.setOnShowListener` for action buttons, custom rounded drawables for input backgrounds) to prevent light-on-light or dark-on-dark contrast collisions.
+- **Web Showcase & Documentation UI Invariants**:
+  - **Icons, Not Emojis**: NEVER use platform emojis (e.g. 🍎, 🤖, ⚡, 🔊, 📊, ✏️, 🔄) as UI icons inside feature cards, quick start guides, or status badges.
+  - Always use scalable, inline vector SVGs with semantic color tokens (`currentColor`, `var(--primary)`). Emojis render inconsistently across operating systems and look unpolished in professional developer tools.
