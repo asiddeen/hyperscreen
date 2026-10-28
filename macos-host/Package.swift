@@ -20,7 +20,7 @@ let package = Package(
                 .unsafeFlags([
                     "-std=c++20",
                     "-O3",
-                    "-I/Users/asiddeenmuhammad/Projects/hyperscreen/core/include"
+                    "-I../core/include"
                 ])
             ]
         ),
