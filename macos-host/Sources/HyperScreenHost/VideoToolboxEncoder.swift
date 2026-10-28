@@ -74,11 +74,19 @@ public final class VideoToolboxEncoder: @unchecked Sendable {
         // Profile Level: Main10 / Main 4:4:4 10 for Pro Text Sharpness, or Main for standard 4:2:0
         if !config.preferAV1 {
             if config.preferYUV444 {
-                VTSessionSetProperty(
+                let status444 = VTSessionSetProperty(
                     vtSession,
                     key: kVTCompressionPropertyKey_ProfileLevel,
                     value: "HEVC_Main44410_AutoLevel" as CFString
                 )
+                if status444 != noErr {
+                    NSLog("[HyperScreen] Hardware encoder does not support HEVC_Main44410 (status: %d); falling back to HEVC_Main", status444)
+                    VTSessionSetProperty(
+                        vtSession,
+                        key: kVTCompressionPropertyKey_ProfileLevel,
+                        value: kVTProfileLevel_HEVC_Main_AutoLevel
+                    )
+                }
             } else {
                 VTSessionSetProperty(
                     vtSession,

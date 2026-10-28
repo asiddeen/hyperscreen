@@ -310,6 +310,7 @@ Java_dev_hyperscreen_client_NativeCoreBridge_nativeBuildClientHelloPacket(
     jint pixelWidth,
     jint pixelHeight,
     jint refreshRateHz,
+    jlong sessionToken,
     jstring deviceNameStr
 ) {
     hs_hello_payload_t hello{};
@@ -323,7 +324,7 @@ Java_dev_hyperscreen_client_NativeCoreBridge_nativeBuildClientHelloPacket(
     hello.supports_av1       = 0;
     hello.transport_mode     = 0;
     hello.max_bitrate_kbps   = 50000;
-    hello.session_token      = 0;
+    hello.session_token      = static_cast<uint64_t>(sessionToken);
     (void)deviceNameStr;
 
     hs_packet_header_t hdr{};

@@ -33,7 +33,7 @@ public final class HyperScreenCoordinator: ObservableObject, @unchecked Sendable
     @Published public var hasAccessibilityPermission: Bool = AXIsProcessTrusted()
     @Published public var showOnboardingAndQR: Bool = false
     @Published public var userManuallyStopped: Bool = false
-    @Published public var userPreferredYUV444: Bool = false
+    @Published public var userPreferredYUV444: Bool = UserDefaults.standard.bool(forKey: "userPreferredYUV444")
     @Published public var lastStatusMessage: String? = nil
 
     // Active connection preference & granular status telemetry
@@ -289,6 +289,13 @@ extension HyperScreenCoordinator: HyperScreenTransportDelegate {
             let configChanged = (self.currentConfig != newConfig)
             self.currentConfig = newConfig
             self.hasScreenCapturePermission = CGPreflightScreenCaptureAccess()
+
+            // If the user explicitly stopped the display session on Mac, NEVER auto-restart!
+            if self.userManuallyStopped {
+                self.transport.sendServerHello(config: self.currentConfig, isStreaming: false, bitrateMbps: self.bitrateMbps)
+                return
+            }
+
             // Only update display if the user has explicitly started the display session
             if self.isStreaming && configChanged && self.hasScreenCapturePermission {
                 await self.startDisplaySession()
@@ -1288,7 +1295,28 @@ final class HyperScreenAppDelegate: NSObject, NSApplicationDelegate, NSWindowDel
 
         statusMenu.addItem(.separator())
 
-        // 4. Settings… (⌘,) - Renamed and streamlined
+        // 4. Pro Features
+        let chromaItem = NSMenuItem(
+            title: "4:4:4 Pro Text Chroma",
+            action: #selector(toggleChroma444(_:)),
+            keyEquivalent: ""
+        )
+        chromaItem.target = self
+        chromaItem.state = coordinator.userPreferredYUV444 ? .on : .off
+        statusMenu.addItem(chromaItem)
+
+        let clamshellItem = NSMenuItem(
+            title: "Clamshell / Headless Awake",
+            action: #selector(toggleClamshellAwake(_:)),
+            keyEquivalent: ""
+        )
+        clamshellItem.target = self
+        clamshellItem.state = coordinator.headlessClamshellMode ? .on : .off
+        statusMenu.addItem(clamshellItem)
+
+        statusMenu.addItem(.separator())
+
+        // 5. Settings… (⌘,) - Renamed and streamlined
         let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(openSettingsFromMenu(_:)),
@@ -1299,7 +1327,7 @@ final class HyperScreenAppDelegate: NSObject, NSApplicationDelegate, NSWindowDel
 
         statusMenu.addItem(.separator())
 
-        // 5. Quit HyperScreen (⌘Q)
+        // 6. Quit HyperScreen (⌘Q)
         let quitItem = NSMenuItem(
             title: "Quit HyperScreen",
             action: #selector(quitApp(_:)),
@@ -1359,18 +1387,22 @@ final class HyperScreenAppDelegate: NSObject, NSApplicationDelegate, NSWindowDel
 
     @objc private func toggleChroma444(_ sender: AnyObject?) {
         coordinator.userPreferredYUV444.toggle()
+        UserDefaults.standard.set(coordinator.userPreferredYUV444, forKey: "userPreferredYUV444")
         coordinator.currentConfig.preferYUV444 = coordinator.userPreferredYUV444
+        rebuildStatusMenu()
         if coordinator.isStreaming {
             Task {
                 await coordinator.stopDisplaySession()
                 coordinator.userManuallyStopped = false
                 await coordinator.startDisplaySession()
+                rebuildStatusMenu()
             }
         }
     }
 
     @objc private func toggleClamshellAwake(_ sender: AnyObject?) {
         coordinator.headlessClamshellMode.toggle()
+        rebuildStatusMenu()
     }
 
     @objc private func copyPairingPIN(_ sender: AnyObject?) {

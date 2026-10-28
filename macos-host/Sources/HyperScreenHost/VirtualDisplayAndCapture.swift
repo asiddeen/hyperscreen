@@ -253,7 +253,8 @@ public final class SCStreamEngine: NSObject, SCStreamOutput, SCStreamDelegate, @
 
         // Align pixel format directly with VideoToolbox hardware surface expectations for zero-copy IOSurface handoff
         if config.preferYUV444 {
-            streamConfig.pixelFormat = kCVPixelFormatType_444YpCbCr10BiPlanarVideoRange
+            // Full RGB 4:4:4 pixel format for Pro Text sharpness
+            streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
         } else {
             streamConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         }

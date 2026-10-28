@@ -18,7 +18,9 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.SurfaceTexture
 import android.graphics.Typeface
 import android.hardware.camera2.CameraCaptureSession
@@ -154,6 +156,7 @@ object NativeCoreBridge {
         pixelWidth: Int,
         pixelHeight: Int,
         refreshRateHz: Int,
+        sessionToken: Long,
         deviceNameStr: String
     ): ByteArray
 
@@ -407,8 +410,83 @@ class LowLatencyMediaCodec(
 }
 
 /**
+ * Theme selection modes for HyperScreen Pro Android client.
+ */
+enum class ThemeMode {
+    SYSTEM,
+    LIGHT,
+    DARK
+}
+
+/**
+ * High-craft semantic color palette for HyperScreen Pro Android.
+ * Adapts seamlessly between Dark and Light environments while preserving
+ * high legibility, WCAG contrast compliance, and Apple/Material physical glass depth.
+ */
+class HyperScreenPalette(val isDark: Boolean) {
+    // Root Canvas & Glass Layer
+    val canvasBg = if (isDark) Color.parseColor("#0A0E1A") else Color.parseColor("#F1F5F9")
+    val cardBg = if (isDark) Color.argb(246, 15, 22, 38) else Color.argb(252, 255, 255, 255)
+    val cardBorder = if (isDark) Color.parseColor("#1E293B") else Color.parseColor("#E2E8F0")
+    val cardShadow = if (isDark) Color.argb(110, 0, 0, 0) else Color.argb(25, 15, 23, 42)
+    val cardInnerRim = if (isDark) Color.argb(22, 255, 255, 255) else Color.argb(140, 255, 255, 255)
+
+    // Floating Streaming HUDs (High-Contrast Frosted Overlays over Mac Stream)
+    val hudBg = if (isDark) Color.argb(235, 12, 17, 29) else Color.argb(242, 255, 255, 255)
+    val hudBorder = if (isDark) Color.parseColor("#334155") else Color.parseColor("#CBD5E1")
+    val hudShadow = if (isDark) Color.argb(130, 0, 0, 0) else Color.argb(35, 15, 23, 42)
+
+    // Typography
+    val title = if (isDark) Color.parseColor("#F8FAFC") else Color.parseColor("#0F172A")
+    val subtitle = if (isDark) Color.parseColor("#38BDF8") else Color.parseColor("#0284C7")
+    val body = if (isDark) Color.parseColor("#E0F2FE") else Color.parseColor("#1E293B")
+    val muted = if (isDark) Color.parseColor("#94A3B8") else Color.parseColor("#64748B")
+    val caption = if (isDark) Color.parseColor("#64748B") else Color.parseColor("#94A3B8")
+
+    // Buttons & Interactivity
+    val primaryBtnBg = Color.parseColor("#0284C7")
+    val primaryBtnText = Color.parseColor("#FFFFFF")
+    val secondaryBtnBg = if (isDark) Color.parseColor("#1E293B") else Color.parseColor("#F8FAFC")
+    val secondaryBtnBorder = if (isDark) Color.parseColor("#334155") else Color.parseColor("#CBD5E1")
+    val secondaryBtnText = if (isDark) Color.parseColor("#F1F5F9") else Color.parseColor("#1E293B")
+    val inactiveBtnText = if (isDark) Color.parseColor("#94A3B8") else Color.parseColor("#64748B")
+
+    // Diagnostics & Panels
+    val panelBg = if (isDark) Color.parseColor("#131B2E") else Color.parseColor("#F8FAFC")
+    val panelBorder = if (isDark) Color.parseColor("#1E293B") else Color.parseColor("#E2E8F0")
+    val checklistLabel = if (isDark) Color.parseColor("#94A3B8") else Color.parseColor("#64748B")
+
+    // Status Signals & Halos
+    val success = if (isDark) Color.parseColor("#34D399") else Color.parseColor("#059669")
+    val successHalo = if (isDark) Color.argb(55, 52, 211, 153) else Color.argb(45, 5, 150, 105)
+    val warning = if (isDark) Color.parseColor("#F59E0B") else Color.parseColor("#D97706")
+    val warningHalo = if (isDark) Color.argb(55, 245, 158, 11) else Color.argb(45, 217, 119, 6)
+    val warningBg = if (isDark) Color.argb(35, 245, 158, 11) else Color.argb(30, 217, 119, 6)
+    val warningTitle = if (isDark) Color.parseColor("#FBBF24") else Color.parseColor("#B45309")
+    val warningHint = if (isDark) Color.parseColor("#E2E8F0") else Color.parseColor("#475569")
+
+    // Contextual Errors
+    val error = if (isDark) Color.parseColor("#EF4444") else Color.parseColor("#DC2626")
+    val errorBg = if (isDark) Color.argb(240, 28, 18, 24) else Color.argb(245, 254, 242, 242)
+    val errorBorder = if (isDark) Color.parseColor("#EF4444") else Color.parseColor("#FCA5A5")
+    val errorDiagText = if (isDark) Color.parseColor("#FCA5A5") else Color.parseColor("#B91C1C")
+
+    // Destructive Actions
+    val disconnectBg = if (isDark) Color.parseColor("#DC2626") else Color.parseColor("#EF4444")
+    val cancelBg = if (isDark) Color.parseColor("#991B1B") else Color.parseColor("#FEE2E2")
+    val cancelBorder = if (isDark) Color.parseColor("#EF4444") else Color.parseColor("#F87171")
+    val cancelText = if (isDark) Color.parseColor("#FFFFFF") else Color.parseColor("#991B1B")
+
+    // Modifiers & Trackpad Badges
+    val activeModifierBg = Color.parseColor("#6366F1")
+    val trackpadBadgeBg = Color.parseColor("#A855F7")
+    val rightClickBadgeBg = Color.parseColor("#0EA5E9")
+}
+
+/**
  * 240Hz Decoupled Hardware Vector Cursor Plane + Pro Connection Hub (when disconnected)
  * + Collapsible Pro HUD with One-Tap Disconnect & Mac Modifier Bar (when streaming).
+ * Dynamically adapts to Light and Dark themes with refined glass aesthetics.
  */
 class HardwareCursorAndModifierOverlayView(
     context: Context,
@@ -422,6 +500,20 @@ class HardwareCursorAndModifierOverlayView(
     private val onForgetMacClicked: () -> Unit = {},
     private val onDismissErrorClicked: () -> Unit = {}
 ) : View(context) {
+
+    private fun isSystemInDarkTheme(): Boolean {
+        val uiMode = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        return uiMode == Configuration.UI_MODE_NIGHT_YES
+    }
+
+    var themeMode: ThemeMode = ThemeMode.SYSTEM
+        private set
+
+    var palette: HyperScreenPalette = HyperScreenPalette(isSystemInDarkTheme())
+        private set
+
+    var onThemeChangedListener: ((ThemeMode) -> Unit)? = null
+
     private val cursorFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#0F172A")
         style = Paint.Style.FILL
@@ -438,128 +530,213 @@ class HardwareCursorAndModifierOverlayView(
     }
     private val cursorPath = Path()
 
+    private val ambientGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val cardShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
     private val cardBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(242, 10, 14, 26)
         style = Paint.Style.FILL
     }
     private val cardBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#1E293B")
-        style = Paint.Style.STROKE
-        strokeWidth = 2.5f
-    }
-    private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(232, 10, 14, 26)
-        style = Paint.Style.FILL
-    }
-    private val pillStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#334155")
         style = Paint.Style.STROKE
         strokeWidth = 2f
     }
+    private val cardInnerRimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1f
+    }
+    private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val pillStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+    }
+    private val pillShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
     private val primaryBtnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#0284C7")
         style = Paint.Style.FILL
     }
     private val secondaryBtnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#1E293B")
         style = Paint.Style.FILL
     }
+    private val secondaryBtnBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.8f
+    }
     private val disconnectBtnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#DC2626")
         style = Paint.Style.FILL
     }
     private val cancelBtnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#991B1B")
         style = Paint.Style.FILL
     }
     private val cancelBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#EF4444")
         style = Paint.Style.STROKE
         strokeWidth = 2.5f
     }
     private val activeKeyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#6366F1")
         style = Paint.Style.FILL
     }
     private val trackpadBadgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#A855F7")
         style = Paint.Style.FILL
     }
     private val rightClickBadgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#0EA5E9")
         style = Paint.Style.FILL
     }
     private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#F8FAFC")
         textSize = 34f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
     private val subtitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#38BDF8")
         textSize = 21f
         textAlign = Paint.Align.CENTER
     }
     private val btnTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FFFFFF")
         textSize = 22f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
     private val btnInactiveTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#94A3B8")
         textSize = 22f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         textAlign = Paint.Align.CENTER
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#E0F2FE")
         textSize = 20f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
     private val statusTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#34D399")
         textSize = 20f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = Paint.Align.LEFT
     }
     private val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#34D399")
         textSize = 19f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
     private val versionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#64748B")
         textSize = 17f
         typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         textAlign = Paint.Align.CENTER
     }
     private val checklistOkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#10B981")
+        style = Paint.Style.FILL
+    }
+    private val checklistOkHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     private val checklistWarnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#F59E0B")
+        style = Paint.Style.FILL
+    }
+    private val checklistWarnHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
     private val checklistWaitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#64748B")
         style = Paint.Style.FILL
     }
     private val errorBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(240, 28, 18, 24)
         style = Paint.Style.FILL
     }
     private val errorBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#EF4444")
         style = Paint.Style.STROKE
         strokeWidth = 2.5f
+    }
+    private val panelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val panelBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.8f
     }
     private val brandIcon = runCatching {
         context.resources.getDrawable(R.mipmap.ic_launcher_foreground, context.theme)
     }.getOrNull()
+
+    init {
+        applyPalette()
+    }
+
+    fun applyPalette() {
+        cardBgPaint.color = palette.cardBg
+        cardBorderPaint.color = palette.cardBorder
+        cardShadowPaint.color = palette.cardShadow
+        cardInnerRimPaint.color = palette.cardInnerRim
+
+        pillPaint.color = palette.hudBg
+        pillStrokePaint.color = palette.hudBorder
+        pillShadowPaint.color = palette.hudShadow
+
+        primaryBtnPaint.color = palette.primaryBtnBg
+        secondaryBtnPaint.color = palette.secondaryBtnBg
+        secondaryBtnBorderPaint.color = palette.secondaryBtnBorder
+
+        disconnectBtnPaint.color = palette.disconnectBg
+        cancelBtnPaint.color = palette.cancelBg
+        cancelBorderPaint.color = palette.cancelBorder
+
+        activeKeyPaint.color = palette.activeModifierBg
+        trackpadBadgePaint.color = palette.trackpadBadgeBg
+        rightClickBadgePaint.color = palette.rightClickBadgeBg
+
+        titlePaint.color = palette.title
+        subtitlePaint.color = palette.subtitle
+        btnTextPaint.color = palette.primaryBtnText
+        btnInactiveTextPaint.color = palette.inactiveBtnText
+        textPaint.color = palette.body
+
+        statusTextPaint.color = palette.success
+        badgeTextPaint.color = palette.success
+        versionPaint.color = palette.caption
+
+        checklistOkPaint.color = palette.success
+        checklistOkHaloPaint.color = palette.successHalo
+        checklistWarnPaint.color = palette.warning
+        checklistWarnHaloPaint.color = palette.warningHalo
+        checklistWaitPaint.color = palette.caption
+
+        errorBgPaint.color = palette.errorBg
+        errorBorderPaint.color = palette.errorBorder
+
+        panelBgPaint.color = palette.panelBg
+        panelBorderPaint.color = palette.panelBorder
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        themeMode = mode
+        val isDark = when (mode) {
+            ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+        }
+        palette = HyperScreenPalette(isDark)
+        applyPalette()
+        postInvalidateOnAnimation()
+        onThemeChangedListener?.invoke(mode)
+    }
+
+    fun cycleThemeMode() {
+        val next = when (themeMode) {
+            ThemeMode.SYSTEM -> ThemeMode.LIGHT
+            ThemeMode.LIGHT -> ThemeMode.DARK
+            ThemeMode.DARK -> ThemeMode.SYSTEM
+        }
+        setThemeMode(next)
+    }
+
+    fun onSystemConfigurationChanged(newConfig: Configuration) {
+        if (themeMode == ThemeMode.SYSTEM) {
+            val isDark = (newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            palette = HyperScreenPalette(isDark)
+            applyPalette()
+            postInvalidateOnAnimation()
+        }
+    }
 
     @Volatile private var cursorNormX: Float = 0.5f
     @Volatile private var cursorNormY: Float = 0.5f
@@ -631,13 +808,25 @@ class HardwareCursorAndModifierOverlayView(
             val cardLeft = (width - cardW) / 2f
             val cardTop = (height - cardH) / 2f
             val cardRight = cardLeft + cardW
-            val contentLeft = cardLeft + 40f
-            val contentRight = cardRight - 40f
+            val contentLeft = cardLeft + 36f
+            val contentRight = cardRight - 36f
             val contentW = contentRight - contentLeft
-            val segTop = cardTop + 130f
+            val segTop = cardTop + 124f
             val segH = 50f
             val segMid = contentLeft + contentW / 2f
             val pad = 12f
+
+            // Theme Mode Toggle Button (Top-Right of Connection Hub Card)
+            val themeBtnW = 104f
+            val themeBtnH = 38f
+            val themeBtnRight = cardRight - 36f
+            val themeBtnLeft = themeBtnRight - themeBtnW
+            val themeBtnTop = cardTop + 24f
+            val themeBtnBottom = themeBtnTop + themeBtnH
+            if (x in (themeBtnLeft - pad)..(themeBtnRight + pad) && y in (themeBtnTop - pad)..(themeBtnBottom + pad)) {
+                cycleThemeMode()
+                return true
+            }
 
             // A. Segmented Switcher [ 🔌 USB-C ] [ 📶 Wireless LAN ]
             if (y in (segTop - pad)..(segTop + segH + pad)) {
@@ -657,10 +846,10 @@ class HardwareCursorAndModifierOverlayView(
             // B. Inactive Virtual Display State: Disconnect to Standby
             val isInactiveDisplay = connectionStatusText.contains("Virtual Display Inactive")
             if (isInactiveDisplay) {
-                val boxTop = segTop + segH + 24f
+                val boxTop = segTop + segH + 20f
                 val boxH = 96f
-                val discTop = boxTop + boxH + 24f
-                val discH = 68f
+                val discTop = boxTop + boxH + 20f
+                val discH = 64f
                 if (x in (contentLeft - pad)..(contentRight + pad) && y in (discTop - pad)..(discTop + discH + pad)) {
                     onDisconnectClicked()
                     return true
@@ -670,10 +859,10 @@ class HardwareCursorAndModifierOverlayView(
 
             // C. Connecting State: Cancel Button
             if (isConnecting) {
-                val boxTop = segTop + segH + 24f
+                val boxTop = segTop + segH + 20f
                 val boxH = 70f
-                val cancelTop = boxTop + boxH + 24f
-                val cancelH = 68f
+                val cancelTop = boxTop + boxH + 20f
+                val cancelH = 64f
                 if (x in (contentLeft - pad)..(contentRight + pad) && y in (cancelTop - pad)..(cancelTop + cancelH + pad)) {
                     onCancelConnectionClicked()
                     return true
@@ -908,10 +1097,12 @@ class HardwareCursorAndModifierOverlayView(
         yText: Float,
         maxW: Float
     ) {
+        val haloPaint = if (isOk) checklistOkHaloPaint else checklistWarnHaloPaint
         val dotPaint = if (isOk) checklistOkPaint else checklistWarnPaint
-        canvas.drawCircle(cx, cy, 5.5f, dotPaint)
+        canvas.drawCircle(cx, cy, 9f, haloPaint)
+        canvas.drawCircle(cx, cy, 5.2f, dotPaint)
         val itemPaint = Paint(statusTextPaint).apply {
-            color = if (isOk) Color.parseColor("#34D399") else Color.parseColor("#CBD5E1")
+            color = if (isOk) palette.success else palette.muted
             textSize = 16f
             textAlign = Paint.Align.LEFT
         }
@@ -922,9 +1113,26 @@ class HardwareCursorAndModifierOverlayView(
         super.onDraw(canvas)
         if (width <= 0 || height <= 0) return
 
-        // A. Disconnected or Waiting for Stream: Render Solid Canvas + Centered HyperScreen Pro Connection Hub Card
+        // A. Disconnected or Waiting for Stream: Render Canvas + Ambient Atmosphere + Centered Pro Connection Hub Card
         if (isDisconnectedByUser || !hasReceivedVideoFrame) {
-            canvas.drawColor(Color.parseColor("#0A0E1A"))
+            canvas.drawColor(palette.canvasBg)
+
+            // Ambient background depth glow
+            val glowRadius = maxOf(width, height) * 0.75f
+            ambientGlowPaint.shader = RadialGradient(
+                width / 2f,
+                height * 0.28f,
+                glowRadius,
+                if (palette.isDark) {
+                    intArrayOf(Color.argb(38, 2, 132, 199), Color.argb(0, 10, 14, 26))
+                } else {
+                    intArrayOf(Color.argb(45, 186, 230, 253), Color.argb(0, 241, 245, 249))
+                },
+                null,
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), ambientGlowPaint)
+
             val isPortrait = height > width
             val cardW = if (isPortrait) (width - 48f).coerceAtMost(640f) else (width - 64f).coerceAtMost(780f)
             val cardH = if (isPortrait) 660f.coerceAtMost(height - 48f) else 550f.coerceAtMost(height - 64f)
@@ -933,98 +1141,127 @@ class HardwareCursorAndModifierOverlayView(
             val cardRight = cardLeft + cardW
             val cardBottom = cardTop + cardH
 
+            // Card elevation shadow, background, border & inner glass rim
+            canvas.drawRoundRect(cardLeft + 2f, cardTop + 6f, cardRight + 2f, cardBottom + 12f, 36f, 36f, cardShadowPaint)
             canvas.drawRoundRect(cardLeft, cardTop, cardRight, cardBottom, 36f, 36f, cardBgPaint)
             canvas.drawRoundRect(cardLeft, cardTop, cardRight, cardBottom, 36f, 36f, cardBorderPaint)
+            canvas.drawRoundRect(cardLeft + 1.5f, cardTop + 1.5f, cardRight - 1.5f, cardBottom - 1.5f, 34.5f, 34.5f, cardInnerRimPaint)
 
             brandIcon?.let { drawable ->
                 val iconSize = 52
-                val left = (cardLeft + 40f).toInt()
-                val top = (cardTop + 28f).toInt()
+                val left = (cardLeft + 36f).toInt()
+                val top = (cardTop + 24f).toInt()
                 drawable.setBounds(left, top, left + iconSize, top + iconSize)
                 drawable.draw(canvas)
             }
 
-            val contentLeft = cardLeft + 40f
-            val contentRight = cardRight - 40f
+            // Theme Mode Toggle Button (Top-Right of Connection Hub Card)
+            val themeBtnW = 104f
+            val themeBtnH = 38f
+            val themeBtnRight = cardRight - 36f
+            val themeBtnLeft = themeBtnRight - themeBtnW
+            val themeBtnTop = cardTop + 24f
+            val themeBtnBottom = themeBtnTop + themeBtnH
+            canvas.drawRoundRect(themeBtnLeft, themeBtnTop, themeBtnRight, themeBtnBottom, 19f, 19f, secondaryBtnPaint)
+            canvas.drawRoundRect(themeBtnLeft, themeBtnTop, themeBtnRight, themeBtnBottom, 19f, 19f, secondaryBtnBorderPaint)
+            val (tIcon, tLabel) = when (themeMode) {
+                ThemeMode.SYSTEM -> "🌓" to "Auto"
+                ThemeMode.LIGHT -> "☀️" to "Light"
+                ThemeMode.DARK -> "🌙" to "Dark"
+            }
+            val themeBtnTextPaint = Paint(btnTextPaint).apply {
+                color = palette.secondaryBtnText
+                textSize = 15f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            drawFittedText(
+                canvas,
+                "$tIcon $tLabel",
+                (themeBtnLeft + themeBtnRight) / 2f,
+                themeBtnTop + 24f,
+                themeBtnTextPaint,
+                themeBtnW - 12f
+            )
+
+            val contentLeft = cardLeft + 36f
+            val contentRight = cardRight - 36f
             val contentW = contentRight - contentLeft
 
             val headerTitle = if (activeTransportMode == TransportMode.USB) "HyperScreen Pro • USB" else "HyperScreen Pro • Wi-Fi"
-            drawFittedText(canvas, headerTitle, cardLeft + cardW / 2f, cardTop + 64f, titlePaint, cardW - 140f)
+            drawFittedText(canvas, headerTitle, cardLeft + cardW / 2f, cardTop + 60f, titlePaint, cardW - 220f)
             val isInactiveDisplay = connectionStatusText.contains("Virtual Display Inactive")
-            subtitlePaint.color = if (isInactiveDisplay) Color.parseColor("#F59E0B") else Color.parseColor("#38BDF8")
-            drawFittedText(canvas, connectionStatusText, cardLeft + cardW / 2f, cardTop + 106f, subtitlePaint, contentW)
+            subtitlePaint.color = if (isInactiveDisplay) palette.warning else palette.subtitle
+            drawFittedText(canvas, connectionStatusText, cardLeft + cardW / 2f, cardTop + 100f, subtitlePaint, contentW)
 
             // 1. Segmented Switcher [ 🔌 USB-C ] [ 📶 Wireless LAN ]
-            val segTop = cardTop + 130f
+            val segTop = cardTop + 124f
             val segH = 50f
             val segMid = contentLeft + contentW / 2f
             val isUsb = (activeTransportMode == TransportMode.USB)
             val segBtnMaxW = (contentW / 2f) - 20f
 
+            // Track background & border
+            canvas.drawRoundRect(contentLeft, segTop, contentRight, segTop + segH, 20f, 20f, panelBgPaint)
+            canvas.drawRoundRect(contentLeft, segTop, contentRight, segTop + segH, 20f, 20f, panelBorderPaint)
+
             // USB-C Segment
             if (isUsb) {
-                canvas.drawRoundRect(contentLeft, segTop, segMid - 4f, segTop + segH, 18f, 18f, primaryBtnPaint)
-                drawFittedText(canvas, "🔌 USB-C", (contentLeft + segMid - 4f) / 2f, segTop + 33f, btnTextPaint, segBtnMaxW)
+                canvas.drawRoundRect(contentLeft + 3f, segTop + 3f, segMid - 3f, segTop + segH - 3f, 17f, 17f, primaryBtnPaint)
+                drawFittedText(canvas, "🔌 USB-C", (contentLeft + segMid) / 2f, segTop + 32f, btnTextPaint, segBtnMaxW)
+                drawFittedText(canvas, "📶 Wireless LAN", (segMid + contentRight) / 2f, segTop + 32f, btnInactiveTextPaint, segBtnMaxW)
             } else {
-                canvas.drawRoundRect(contentLeft, segTop, segMid - 4f, segTop + segH, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, segTop, segMid - 4f, segTop + segH, 18f, 18f, pillStrokePaint)
-                drawFittedText(canvas, "🔌 USB-C", (contentLeft + segMid - 4f) / 2f, segTop + 33f, btnInactiveTextPaint, segBtnMaxW)
-            }
-
-            // Wireless LAN Segment
-            if (!isUsb) {
-                canvas.drawRoundRect(segMid + 4f, segTop, contentRight, segTop + segH, 18f, 18f, primaryBtnPaint)
-                drawFittedText(canvas, "📶 Wireless LAN", (segMid + 4f + contentRight) / 2f, segTop + 33f, btnTextPaint, segBtnMaxW)
-            } else {
-                canvas.drawRoundRect(segMid + 4f, segTop, contentRight, segTop + segH, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(segMid + 4f, segTop, contentRight, segTop + segH, 18f, 18f, pillStrokePaint)
-                drawFittedText(canvas, "📶 Wireless LAN", (segMid + 4f + contentRight) / 2f, segTop + 33f, btnInactiveTextPaint, segBtnMaxW)
+                canvas.drawRoundRect(segMid + 3f, segTop + 3f, contentRight - 3f, segTop + segH - 3f, 17f, 17f, primaryBtnPaint)
+                drawFittedText(canvas, "🔌 USB-C", (contentLeft + segMid) / 2f, segTop + 32f, btnInactiveTextPaint, segBtnMaxW)
+                drawFittedText(canvas, "📶 Wireless LAN", (segMid + contentRight) / 2f, segTop + 32f, btnTextPaint, segBtnMaxW)
             }
 
             // 2. Dynamic Content: Inactive Display vs Connecting vs Error vs USB vs Wi-Fi
             if (isInactiveDisplay) {
-                val boxTop = segTop + segH + 24f
+                val boxTop = segTop + segH + 20f
                 val boxH = 96f
-                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, secondaryBtnPaint)
-                val amberStroke = Paint(pillStrokePaint).apply {
-                    color = Color.parseColor("#F59E0B")
-                    strokeWidth = 2.5f
+                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, panelBgPaint)
+                val warnStroke = Paint(panelBorderPaint).apply {
+                    color = palette.warning
+                    strokeWidth = 2.2f
                 }
-                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, amberStroke)
-                val amberTitle = Paint(textPaint).apply {
-                    color = Color.parseColor("#FBBF24")
-                    textSize = 22f
+                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, warnStroke)
+                val warnTitlePaint = Paint(textPaint).apply {
+                    color = palette.warningTitle
+                    textSize = 21f
                 }
-                drawFittedText(canvas, "⚠️ Mac Virtual Display is Inactive", (contentLeft + contentRight) / 2f, boxTop + 40f, amberTitle, contentW - 24f)
-                val hintText = Paint(versionPaint).apply {
-                    color = Color.parseColor("#E2E8F0")
-                    textSize = 18f
+                drawFittedText(canvas, "⚠️ Mac Virtual Display is Inactive", (contentLeft + contentRight) / 2f, boxTop + 38f, warnTitlePaint, contentW - 24f)
+                val warnHintPaint = Paint(versionPaint).apply {
+                    color = palette.warningHint
+                    textSize = 17f
                 }
-                drawFittedText(canvas, "Click 'Start Virtual Display' (⌘S) on your Mac to stream", (contentLeft + contentRight) / 2f, boxTop + 72f, hintText, contentW - 24f)
+                drawFittedText(canvas, "Click 'Start Virtual Display' (⌘S) on your Mac to stream", (contentLeft + contentRight) / 2f, boxTop + 68f, warnHintPaint, contentW - 24f)
 
-                val discTop = boxTop + boxH + 24f
-                val discH = 68f
-                canvas.drawRoundRect(contentLeft, discTop, contentRight, discTop + discH, 22f, 22f, disconnectBtnPaint)
-                drawFittedText(canvas, "⏹ Disconnect to Standby", (contentLeft + contentRight) / 2f, discTop + 43f, btnTextPaint, contentW - 24f)
+                val discTop = boxTop + boxH + 20f
+                val discH = 64f
+                canvas.drawRoundRect(contentLeft, discTop, contentRight, discTop + discH, 20f, 20f, disconnectBtnPaint)
+                drawFittedText(canvas, "⏹ Disconnect to Standby", (contentLeft + contentRight) / 2f, discTop + 40f, btnTextPaint, contentW - 24f)
 
-                drawFittedText(canvas, "v$appVersion • Waiting for Mac display activation...", cardLeft + cardW / 2f, discTop + discH + 34f, versionPaint, cardW - 32f)
+                drawFittedText(canvas, "v$appVersion • Waiting for Mac display activation...", cardLeft + cardW / 2f, discTop + discH + 32f, versionPaint, cardW - 32f)
                 return
             }
 
             if (isConnecting) {
-                val boxTop = segTop + segH + 24f
+                val boxTop = segTop + segH + 20f
                 val boxH = 70f
-                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, pillStrokePaint)
+                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, panelBgPaint)
+                canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, panelBorderPaint)
                 drawFittedText(canvas, "⏳ Connecting... Tap Cancel to abort", (contentLeft + contentRight) / 2f, boxTop + 43f, textPaint, contentW - 24f)
 
-                val cancelTop = boxTop + boxH + 24f
-                val cancelH = 68f
-                canvas.drawRoundRect(contentLeft, cancelTop, contentRight, cancelTop + cancelH, 22f, 22f, cancelBtnPaint)
-                canvas.drawRoundRect(contentLeft, cancelTop, contentRight, cancelTop + cancelH, 22f, 22f, cancelBorderPaint)
-                drawFittedText(canvas, "✕ Cancel Connection", (contentLeft + contentRight) / 2f, cancelTop + 43f, btnTextPaint, contentW - 24f)
+                val cancelTop = boxTop + boxH + 20f
+                val cancelH = 64f
+                canvas.drawRoundRect(contentLeft, cancelTop, contentRight, cancelTop + cancelH, 20f, 20f, cancelBtnPaint)
+                canvas.drawRoundRect(contentLeft, cancelTop, contentRight, cancelTop + cancelH, 20f, 20f, cancelBorderPaint)
+                val cancelTextPaint = Paint(btnTextPaint).apply {
+                    color = palette.cancelText
+                }
+                drawFittedText(canvas, "✕ Cancel Connection", (contentLeft + contentRight) / 2f, cancelTop + 40f, cancelTextPaint, contentW - 24f)
 
-                drawFittedText(canvas, "v$appVersion • Ultra-Low Latency Display Engine", cardLeft + cardW / 2f, cancelTop + cancelH + 34f, versionPaint, cardW - 32f)
+                drawFittedText(canvas, "v$appVersion • Ultra-Low Latency Display Engine", cardLeft + cardW / 2f, cancelTop + cancelH + 32f, versionPaint, cardW - 32f)
                 return
             }
 
@@ -1035,17 +1272,17 @@ class HardwareCursorAndModifierOverlayView(
                 canvas.drawRoundRect(contentLeft, boxTop, contentRight, boxTop + boxH, 20f, 20f, errorBorderPaint)
 
                 val errTitlePaint = Paint(titlePaint).apply {
-                    color = Color.parseColor("#EF4444")
+                    color = palette.error
                     textSize = 21f
                     textAlign = Paint.Align.CENTER
                 }
                 val errDiagPaint = Paint(subtitlePaint).apply {
-                    color = Color.parseColor("#FCA5A5")
+                    color = palette.errorDiagText
                     textSize = 17f
                     textAlign = Paint.Align.CENTER
                 }
                 val errHintPaint = Paint(versionPaint).apply {
-                    color = Color.parseColor("#E2E8F0")
+                    color = palette.muted
                     textSize = 15f
                     textAlign = Paint.Align.CENTER
                 }
@@ -1062,8 +1299,11 @@ class HardwareCursorAndModifierOverlayView(
                 val dismissTop = recovTop + recovH + 12f
                 val dismissH = 52f
                 canvas.drawRoundRect(contentLeft, dismissTop, contentRight, dismissTop + dismissH, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, dismissTop, contentRight, dismissTop + dismissH, 18f, 18f, pillStrokePaint)
-                drawFittedText(canvas, "✕ Dismiss to Standby", (contentLeft + contentRight) / 2f, dismissTop + 33f, btnTextPaint, contentW - 24f)
+                canvas.drawRoundRect(contentLeft, dismissTop, contentRight, dismissTop + dismissH, 18f, 18f, secondaryBtnBorderPaint)
+                val dismissTextPaint = Paint(btnTextPaint).apply {
+                    color = palette.secondaryBtnText
+                }
+                drawFittedText(canvas, "✕ Dismiss to Standby", (contentLeft + contentRight) / 2f, dismissTop + 33f, dismissTextPaint, contentW - 24f)
 
                 drawFittedText(canvas, "v$appVersion • Contextual Error Recovery", cardLeft + cardW / 2f, dismissTop + dismissH + 28f, versionPaint, cardW - 32f)
                 return
@@ -1073,15 +1313,16 @@ class HardwareCursorAndModifierOverlayView(
                 // USB-C Content with Pre-Flight Diagnostics
                 val infoTop = segTop + segH + 16f
                 val infoH = 118f
-                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, pillStrokePaint)
+                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, panelBgPaint)
+                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, panelBorderPaint)
 
                 val chkHeaderPaint = Paint(textPaint).apply {
-                    color = Color.parseColor("#94A3B8")
-                    textSize = 15f
+                    color = palette.checklistLabel
+                    textSize = 14f
                     textAlign = Paint.Align.LEFT
+                    letterSpacing = 0.08f
                 }
-                drawFittedText(canvas, "PRE-FLIGHT USB DIAGNOSTICS", contentLeft + 22f, infoTop + 24f, chkHeaderPaint, contentW - 44f)
+                drawFittedText(canvas, "PRE-FLIGHT HARDWARE DIAGNOSTICS", contentLeft + 22f, infoTop + 24f, chkHeaderPaint, contentW - 44f)
 
                 val cableOk = isUsbCablePlugged || isUsbTunnelActive
                 drawChecklistItem(
@@ -1121,7 +1362,7 @@ class HardwareCursorAndModifierOverlayView(
 
                 val btnTop = infoTop + infoH + 18f
                 val btnH = 64f
-                canvas.drawRoundRect(contentLeft, btnTop, contentRight, btnTop + btnH, 22f, 22f, primaryBtnPaint)
+                canvas.drawRoundRect(contentLeft, btnTop, contentRight, btnTop + btnH, 20f, 20f, primaryBtnPaint)
                 drawFittedText(canvas, "⚡ Connect via USB-C Cable", (contentLeft + contentRight) / 2f, btnTop + 41f, btnTextPaint, contentW - 24f)
 
                 drawFittedText(canvas, "Requires USB cable with USB Debugging enabled on tablet", cardLeft + cardW / 2f, btnTop + btnH + 30f, versionPaint, cardW - 32f)
@@ -1134,20 +1375,20 @@ class HardwareCursorAndModifierOverlayView(
             if (savedIp != null) {
                 val infoTop = segTop + segH + 16f
                 val infoH = 104f
-                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, pillStrokePaint)
+                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, panelBgPaint)
+                canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 18f, 18f, panelBorderPaint)
 
                 val badgeStr = if (isSavedMacOnline) "● Online via Bonjour • Ready to Connect" else "○ Saved Mac Profile"
-                val bColor = if (isSavedMacOnline) Color.parseColor("#10B981") else Color.parseColor("#38BDF8")
+                val bColor = if (isSavedMacOnline) palette.success else palette.subtitle
                 val bPaint = Paint(badgeTextPaint).apply {
                     color = bColor
-                    textSize = 16f
+                    textSize = 15f
                     textAlign = Paint.Align.LEFT
                 }
                 drawFittedText(canvas, badgeStr, contentLeft + 22f, infoTop + 26f, bPaint, contentW - 44f)
 
                 val namePaint = Paint(titlePaint).apply {
-                    color = Color.parseColor("#F8FAFC")
+                    color = palette.title
                     textSize = 23f
                     textAlign = Paint.Align.LEFT
                 }
@@ -1164,7 +1405,7 @@ class HardwareCursorAndModifierOverlayView(
                     "IP: $savedIp:$savedMacPort"
                 }
                 val detailPaint = Paint(versionPaint).apply {
-                    color = Color.parseColor("#94A3B8")
+                    color = palette.muted
                     textSize = 15f
                     textAlign = Paint.Align.LEFT
                 }
@@ -1183,14 +1424,17 @@ class HardwareCursorAndModifierOverlayView(
 
                 // Left: Scan QR / PIN
                 canvas.drawRoundRect(contentLeft, b2Top, splitX - 6f, b2Top + b2H, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(contentLeft, b2Top, splitX - 6f, b2Top + b2H, 18f, 18f, pillStrokePaint)
-                drawFittedText(canvas, "📷 Scan QR / PIN", (contentLeft + splitX - 6f) / 2f, b2Top + 34f, btnTextPaint, (splitX - 6f - contentLeft) - 16f)
+                canvas.drawRoundRect(contentLeft, b2Top, splitX - 6f, b2Top + b2H, 18f, 18f, secondaryBtnBorderPaint)
+                val splitBtnPaint = Paint(btnTextPaint).apply {
+                    color = palette.secondaryBtnText
+                }
+                drawFittedText(canvas, "📷 Scan QR / PIN", (contentLeft + splitX - 6f) / 2f, b2Top + 34f, splitBtnPaint, (splitX - 6f - contentLeft) - 16f)
 
                 // Right: Forget This Mac
                 canvas.drawRoundRect(splitX + 6f, b2Top, contentRight, b2Top + b2H, 18f, 18f, secondaryBtnPaint)
-                canvas.drawRoundRect(splitX + 6f, b2Top, contentRight, b2Top + b2H, 18f, 18f, pillStrokePaint)
+                canvas.drawRoundRect(splitX + 6f, b2Top, contentRight, b2Top + b2H, 18f, 18f, secondaryBtnBorderPaint)
                 val forgetPaint = Paint(btnTextPaint).apply {
-                    color = Color.parseColor("#F87171")
+                    color = palette.error
                 }
                 drawFittedText(canvas, "✕ Forget", (splitX + 6f + contentRight) / 2f, b2Top + 34f, forgetPaint, (contentRight - splitX - 6f) - 16f)
 
@@ -1201,14 +1445,17 @@ class HardwareCursorAndModifierOverlayView(
             // Wi-Fi Content without Saved Profile
             val infoTop = segTop + segH + 16f
             val infoH = 50f
-            canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, secondaryBtnPaint)
-            canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, pillStrokePaint)
+            canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, panelBgPaint)
+            canvas.drawRoundRect(contentLeft, infoTop, contentRight, infoTop + infoH, 16f, 16f, panelBorderPaint)
             val wifiBadge = if (discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9") {
                 "● Discovered: $discoveredMacName ($discoveredLanIpLabel)"
             } else {
                 "○ Searching for Mac via Bonjour mDNS..."
             }
-            drawFittedText(canvas, wifiBadge, (contentLeft + contentRight) / 2f, infoTop + 32f, badgeTextPaint, contentW - 24f)
+            val discoveryPaint = Paint(badgeTextPaint).apply {
+                color = if (discoveredMacPin.isNotEmpty() || discoveredLanIpLabel != "192.168.18.9") palette.success else palette.muted
+            }
+            drawFittedText(canvas, wifiBadge, (contentLeft + contentRight) / 2f, infoTop + 32f, discoveryPaint, contentW - 24f)
 
             // Action 1: Connect Wi-Fi
             val b1Top = infoTop + infoH + 14f
@@ -1220,15 +1467,18 @@ class HardwareCursorAndModifierOverlayView(
             val b2Top = b1Top + b1H + 12f
             val b2H = 54f
             canvas.drawRoundRect(contentLeft, b2Top, contentRight, b2Top + b2H, 18f, 18f, secondaryBtnPaint)
-            canvas.drawRoundRect(contentLeft, b2Top, contentRight, b2Top + b2H, 18f, 18f, pillStrokePaint)
-            drawFittedText(canvas, "🔑 Enter 8-Digit Pairing PIN", (contentLeft + contentRight) / 2f, b2Top + 35f, btnTextPaint, contentW - 24f)
+            canvas.drawRoundRect(contentLeft, b2Top, contentRight, b2Top + b2H, 18f, 18f, secondaryBtnBorderPaint)
+            val wifiBtnTextPaint = Paint(btnTextPaint).apply {
+                color = palette.secondaryBtnText
+            }
+            drawFittedText(canvas, "🔑 Enter 8-Digit Pairing PIN", (contentLeft + contentRight) / 2f, b2Top + 35f, wifiBtnTextPaint, contentW - 24f)
 
             // Action 3: Scan QR Code / Manual IP
             val b3Top = b2Top + b2H + 12f
             val b3H = 54f
             canvas.drawRoundRect(contentLeft, b3Top, contentRight, b3Top + b3H, 18f, 18f, secondaryBtnPaint)
-            canvas.drawRoundRect(contentLeft, b3Top, contentRight, b3Top + b3H, 18f, 18f, pillStrokePaint)
-            drawFittedText(canvas, "📷 Scan Mac QR Code / Manual IP", (contentLeft + contentRight) / 2f, b3Top + 35f, btnTextPaint, contentW - 24f)
+            canvas.drawRoundRect(contentLeft, b3Top, contentRight, b3Top + b3H, 18f, 18f, secondaryBtnBorderPaint)
+            drawFittedText(canvas, "📷 Scan Mac QR Code / Manual IP", (contentLeft + contentRight) / 2f, b3Top + 35f, wifiBtnTextPaint, contentW - 24f)
 
             drawFittedText(canvas, "v$appVersion • 5GHz/6GHz Wi-Fi recommended", cardLeft + cardW / 2f, b3Top + b3H + 28f, versionPaint, cardW - 32f)
             return
@@ -1243,15 +1493,20 @@ class HardwareCursorAndModifierOverlayView(
             drawMacVectorCursor(canvas, cx, cy)
         }
 
-        // C. If HUD is Collapsed: Render minimal top-right pill ("⚡ HUD ▾") so 99.5% of screen is clear
+        // C. If HUD is Collapsed: Render minimal top-right pill ("⚡ HUD ▾") with high-contrast frosted backing
         if (isHudCollapsed) {
             val colRight = width - 24f
             val colLeft = colRight - 165f
             val colTop = 20f
             val colBottom = 74f
+            canvas.drawRoundRect(colLeft + 1f, colTop + 3f, colRight + 1f, colBottom + 5f, 27f, 27f, pillShadowPaint)
             canvas.drawRoundRect(colLeft, colTop, colRight, colBottom, 27f, 27f, pillPaint)
             canvas.drawRoundRect(colLeft, colTop, colRight, colBottom, 27f, 27f, pillStrokePaint)
-            drawFittedText(canvas, "⚡ HUD ▾", (colLeft + colRight) / 2f, colTop + 35f, textPaint, (colRight - colLeft) - 16f)
+            val colTextPaint = Paint(textPaint).apply {
+                color = palette.body
+                textSize = 18f
+            }
+            drawFittedText(canvas, "⚡ HUD ▾", (colLeft + colRight) / 2f, colTop + 35f, colTextPaint, (colRight - colLeft) - 16f)
             return
         }
 
@@ -1260,6 +1515,7 @@ class HardwareCursorAndModifierOverlayView(
         val barLeft = (barRight - 690f).coerceAtLeast(24f)
         val barTop = 20f
         val barBottom = 84f
+        canvas.drawRoundRect(barLeft + 1f, barTop + 3f, barRight + 1f, barBottom + 5f, 32f, 32f, pillShadowPaint)
         canvas.drawRoundRect(barLeft, barTop, barRight, barBottom, 32f, 32f, pillPaint)
         canvas.drawRoundRect(barLeft, barTop, barRight, barBottom, 32f, 32f, pillStrokePaint)
 
@@ -1267,26 +1523,35 @@ class HardwareCursorAndModifierOverlayView(
         val discLeft = hideLeft - 175f
         val qrLeft = discLeft - 135f
 
-        val statusMaxW = ((qrLeft - 12f) - (barLeft + 22f)).coerceAtLeast(60f)
-        drawFittedText(canvas, "● $connectionStatusText", barLeft + 22f, barTop + 40f, statusTextPaint, statusMaxW)
+        val statusMaxW = ((qrLeft - 12f) - (barLeft + 44f)).coerceAtLeast(60f)
+        canvas.drawCircle(barLeft + 26f, (barTop + barBottom) / 2f, 8f, checklistOkHaloPaint)
+        canvas.drawCircle(barLeft + 26f, (barTop + barBottom) / 2f, 4.5f, checklistOkPaint)
+        drawFittedText(canvas, connectionStatusText, barLeft + 42f, barTop + 38f, statusTextPaint, statusMaxW)
 
         // QR / IP Button
         canvas.drawRoundRect(qrLeft, barTop + 10f, discLeft - 10f, barBottom - 10f, 22f, 22f, secondaryBtnPaint)
-        drawFittedText(canvas, "📷 IP/QR", (qrLeft + discLeft - 10f) / 2f, barTop + 40f, textPaint, (discLeft - 10f - qrLeft) - 10f)
+        canvas.drawRoundRect(qrLeft, barTop + 10f, discLeft - 10f, barBottom - 10f, 22f, 22f, secondaryBtnBorderPaint)
+        val hudBtnTextPaint = Paint(btnTextPaint).apply {
+            color = palette.secondaryBtnText
+            textSize = 19f
+        }
+        drawFittedText(canvas, "📷 IP/QR", (qrLeft + discLeft - 10f) / 2f, barTop + 40f, hudBtnTextPaint, (discLeft - 10f - qrLeft) - 10f)
 
         // Disconnect Button (Red)
         canvas.drawRoundRect(discLeft, barTop + 10f, hideLeft - 10f, barBottom - 10f, 22f, 22f, disconnectBtnPaint)
-        drawFittedText(canvas, "⏹ Disconnect", (discLeft + hideLeft - 10f) / 2f, barTop + 40f, textPaint, (hideLeft - 10f - discLeft) - 10f)
+        drawFittedText(canvas, "⏹ Disconnect", (discLeft + hideLeft - 10f) / 2f, barTop + 40f, btnTextPaint, (hideLeft - 10f - discLeft) - 10f)
 
         // Collapse / Hide HUD Button
         canvas.drawRoundRect(hideLeft, barTop + 10f, barRight - 12f, barBottom - 10f, 22f, 22f, secondaryBtnPaint)
-        drawFittedText(canvas, "▴ Hide", (hideLeft + barRight - 12f) / 2f, barTop + 40f, textPaint, (barRight - 12f - hideLeft) - 10f)
+        canvas.drawRoundRect(hideLeft, barTop + 10f, barRight - 12f, barBottom - 10f, 22f, 22f, secondaryBtnBorderPaint)
+        drawFittedText(canvas, "▴ Hide", (hideLeft + barRight - 12f) / 2f, barTop + 40f, hudBtnTextPaint, (barRight - 12f - hideLeft) - 10f)
 
         // E. Bottom-Left Mac Pro Modifier & Input Bar
         val pillWidth = 840f.coerceAtMost(width - 48f)
         val pillHeight = 76f
         val pillLeft = 24f
         val pillTop = height - pillHeight - 24f
+        canvas.drawRoundRect(pillLeft + 1f, pillTop + 3f, pillLeft + pillWidth + 1f, pillTop + pillHeight + 5f, 38f, 38f, pillShadowPaint)
         canvas.drawRoundRect(pillLeft, pillTop, pillLeft + pillWidth, pillTop + pillHeight, 38f, 38f, pillPaint)
         canvas.drawRoundRect(pillLeft, pillTop, pillLeft + pillWidth, pillTop + pillHeight, 38f, 38f, pillStrokePaint)
 
@@ -1313,6 +1578,17 @@ class HardwareCursorAndModifierOverlayView(
         val slotW = keysWidth / labels.size
         val mask = activeModifiersMask.get()
 
+        val activeKeyTextPaint = Paint(btnTextPaint).apply {
+            color = Color.parseColor("#FFFFFF")
+            textSize = 20f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val inactiveKeyTextPaint = Paint(btnTextPaint).apply {
+            color = palette.body
+            textSize = 20f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+
         for (i in labels.indices) {
             val slotLeft = keysStartLeft + i * slotW
             val isSelected = when (i) {
@@ -1328,23 +1604,32 @@ class HardwareCursorAndModifierOverlayView(
                     else -> activeKeyPaint
                 }
                 canvas.drawRoundRect(
-                    slotLeft + 5f,
+                    slotLeft + 4f,
                     pillTop + 8f,
-                    slotLeft + slotW - 5f,
+                    slotLeft + slotW - 4f,
                     pillTop + pillHeight - 8f,
-                    28f,
-                    28f,
+                    26f,
+                    26f,
                     badgePaint
                 )
+                drawFittedText(
+                    canvas,
+                    labels[i],
+                    slotLeft + slotW / 2f,
+                    pillTop + pillHeight / 2f + 7f,
+                    activeKeyTextPaint,
+                    slotW - 8f
+                )
+            } else {
+                drawFittedText(
+                    canvas,
+                    labels[i],
+                    slotLeft + slotW / 2f,
+                    pillTop + pillHeight / 2f + 7f,
+                    inactiveKeyTextPaint,
+                    slotW - 8f
+                )
             }
-            drawFittedText(
-                canvas,
-                labels[i],
-                slotLeft + slotW / 2f,
-                pillTop + pillHeight / 2f + 8f,
-                textPaint,
-                slotW - 8f
-            )
         }
     }
 }
@@ -1724,6 +2009,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     @Volatile private var isUserDisconnected: Boolean = true
     @Volatile private var activeTransportMode: TransportMode = TransportMode.USB
     @Volatile private var currentRotationAngle: Int = 0
+    @Volatile private var isMacDisplayStandby = false
 
     companion object {
         private const val PREFS_NAME = "hyperscreen_prefs"
@@ -1745,27 +2031,68 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    private fun isUsbDebuggingEnabled(): Boolean {
+        return runCatching {
+            android.provider.Settings.Global.getInt(contentResolver, android.provider.Settings.Global.ADB_ENABLED, 0) == 1
+        }.getOrDefault(false)
+    }
+
     private fun performUsbPreFlightCheck() {
         val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val plugged = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, -1) ?: 0
         val isCable = (plugged == android.os.BatteryManager.BATTERY_PLUGGED_USB ||
             plugged == android.os.BatteryManager.BATTERY_PLUGGED_AC)
 
-        Thread {
-            val canConnect = runCatching {
-                Socket().use { s ->
-                    s.connect(InetSocketAddress("127.0.0.1", 9453), 150)
-                    true
-                }
-            }.getOrDefault(false)
+        val adbEnabled = isUsbDebuggingEnabled()
 
-            runOnUiThread {
-                cursorOverlay.isUsbCablePlugged = isCable || canConnect
-                cursorOverlay.isUsbTunnelActive = canConnect
-                cursorOverlay.isMacHostReady = canConnect
-                cursorOverlay.postInvalidateOnAnimation()
+        // Only test loopback socket when idle on connection screen to prevent socket thrashing
+        if (!cursorOverlay.isConnecting && !cursorOverlay.hasReceivedVideoFrame && !isActiveSession.get()) {
+            Thread {
+                val canConnect = if (adbEnabled) {
+                    runCatching {
+                        Socket().use { s ->
+                            s.connect(InetSocketAddress("127.0.0.1", 9453), 150)
+                            true
+                        }
+                    }.getOrDefault(false)
+                } else false
+
+                runOnUiThread {
+                    cursorOverlay.isUsbCablePlugged = isCable || canConnect
+                    cursorOverlay.isUsbTunnelActive = canConnect
+                    cursorOverlay.isMacHostReady = canConnect
+                    cursorOverlay.postInvalidateOnAnimation()
+                }
+            }.start()
+        } else {
+            cursorOverlay.isUsbCablePlugged = isCable
+        }
+    }
+
+    private fun clearVideoSurface() {
+        if (!isSurfaceAlive.get()) return
+        runCatching {
+            val canvas = surfaceView.holder.lockCanvas()
+            if (canvas != null) {
+                canvas.drawColor(android.graphics.Color.parseColor("#0A0E1A"))
+                surfaceView.holder.unlockCanvasAndPost(canvas)
             }
-        }.start()
+        }
+    }
+
+    private fun showEnableUsbDebuggingDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Enable USB Debugging")
+            .setMessage("Zero-lag USB-C mode requires USB Debugging enabled in Developer Options on your tablet.\n\n1. Open Settings -> Developer options\n2. Turn ON 'USB debugging'\n3. Re-connect USB cable and tap Connect")
+            .setPositiveButton("Open Settings") { _, _ ->
+                runCatching {
+                    startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+                }.onFailure {
+                    startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun saveMacProfile(name: String, ip: String, port: Int, pin: String) {
@@ -1881,6 +2208,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         cursorOverlay = HardwareCursorAndModifierOverlayView(
             context = this,
             onConnectUsbClicked = {
+                if (!isUsbDebuggingEnabled()) {
+                    showEnableUsbDebuggingDialog()
+                    return@HardwareCursorAndModifierOverlayView
+                }
                 activeTransportMode = TransportMode.USB
                 cursorOverlay.activeTransportMode = TransportMode.USB
                 isUserDisconnected = false
@@ -1898,13 +2229,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 cursorOverlay.isConnecting = true
                 cursorOverlay.isConnectionError = false
                 val savedIp = cursorOverlay.savedMacIp
-                val target = if (savedIp != null) {
-                    "$savedIp:${cursorOverlay.savedMacPort}"
+                if (savedIp != null) {
+                    val target = "$savedIp:${cursorOverlay.savedMacPort}"
+                    cursorOverlay.updateStatus("Connecting via Wi-Fi ($target)...", streaming = false)
+                    connectFromQrUriOrRawText(target)
+                } else if (discoveredMacs.size > 1) {
+                    showSelectMacHostDialog()
                 } else {
-                    "$discoveredLanHostIp:$preferredHostPort"
+                    val target = "$discoveredLanHostIp:$preferredHostPort"
+                    cursorOverlay.updateStatus("Connecting via Wi-Fi ($target)...", streaming = false)
+                    connectFromQrUriOrRawText(target)
                 }
-                cursorOverlay.updateStatus("Connecting via Wi-Fi ($target)...", streaming = false)
-                connectFromQrUriOrRawText(target)
             },
             onEnterPinClicked = {
                 showPairingPinDialog()
@@ -1954,6 +2289,18 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         loadSavedMacProfile()
         performUsbPreFlightCheck()
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedThemeStr = prefs.getString("theme_mode", ThemeMode.SYSTEM.name)
+        val initialThemeMode = runCatching { ThemeMode.valueOf(savedThemeStr ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM)
+        cursorOverlay.setThemeMode(initialThemeMode)
+        cursorOverlay.onThemeChangedListener = { mode ->
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString("theme_mode", mode.name)
+                .apply()
+            enableImmersiveFullscreen()
+        }
 
         // Hide Android system mouse pointer during display sessions so physical tablet mice/trackpads
         // do not render a duplicate Android arrow on top of the native macOS cursor
@@ -2012,6 +2359,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
                 controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (::cursorOverlay.isInitialized && !cursorOverlay.palette.isDark) {
+                    controller.setSystemBarsAppearance(
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                    )
+                } else {
+                    controller.setSystemBarsAppearance(
+                        0,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                    )
+                }
             }
         }
     }
@@ -2043,6 +2401,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        if (::cursorOverlay.isInitialized) {
+            cursorOverlay.onSystemConfigurationChanged(newConfig)
+        }
         enableImmersiveFullscreen()
         cursorOverlay.postInvalidateOnAnimation()
     }
@@ -2060,11 +2421,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun cancelConnectionAttempt() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         isUserDisconnected = true
+        isMacDisplayStandby = false
         isActiveSession.set(false)
         hasSavedCurrentProfile = false
         cursorOverlay.isConnecting = false
         cursorOverlay.isConnectionError = false
         cursorOverlay.hasReceivedVideoFrame = false
+        clearVideoSurface()
         runCatching { activeStreamSocket.getAndSet(null)?.close() }
         runCatching { activeUdpSocket.getAndSet(null)?.close() }
         runCatching { activeTcpOut.getAndSet(null)?.close() }
@@ -2076,6 +2439,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private fun disconnectFromHost() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         isUserDisconnected = true
+        isMacDisplayStandby = false
         isActiveSession.set(false)
         hasSavedCurrentProfile = false
         cursorOverlay.isConnecting = false
@@ -2084,6 +2448,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         cursorOverlay.hasReceivedVideoFrame = false
         val modeLabel = if (activeTransportMode == TransportMode.USB) "USB-C" else "Wireless LAN"
         cursorOverlay.updateStatus("Disconnected • $modeLabel Ready", streaming = false)
+        clearVideoSurface()
 
         // Note: Do NOT set surfaceView.visibility = INVISIBLE because cursorOverlay renders a full
         // dark background (#0A0E1A) in onDraw() while keeping the underlying Surface and touch pipeline active!
@@ -2098,15 +2463,21 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     private fun showPairingPinDialog() {
         val density = resources.displayMetrics.density
+        val p = cursorOverlay.palette
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding((24 * density).toInt(), (16 * density).toInt(), (24 * density).toInt(), (8 * density).toInt())
+            setPadding((24 * density).toInt(), (18 * density).toInt(), (24 * density).toInt(), (12 * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(p.cardBg)
+                cornerRadius = 24 * density
+                setStroke((1.5f * density).toInt(), p.cardBorder)
+            }
         }
 
         val hint = TextView(this).apply {
             text = "Enter the 8-digit Pairing PIN shown on your Mac (e.g. 1234-5678):"
-            setTextColor(Color.parseColor("#CBD5E1"))
+            setTextColor(p.muted)
             textSize = 14f
             gravity = Gravity.CENTER_HORIZONTAL
         }
@@ -2119,8 +2490,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             gravity = Gravity.CENTER
             textSize = 28f
             letterSpacing = 0.25f
-            setTextColor(Color.parseColor("#38BDF8"))
-            setHintTextColor(Color.parseColor("#475569"))
+            setTextColor(p.subtitle)
+            setHintTextColor(p.caption)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(p.panelBg)
+                cornerRadius = 14 * density
+                setStroke((1.5f * density).toInt(), p.panelBorder)
+            }
+            setPadding((16 * density).toInt(), (14 * density).toInt(), (16 * density).toInt(), (14 * density).toInt())
             filters = arrayOf(android.text.InputFilter.LengthFilter(9))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2157,17 +2534,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         })
         container.addView(pinInput)
 
-        AlertDialog.Builder(this)
-            .setTitle("Enter Pairing PIN")
+        val targetName = cursorOverlay.discoveredMacName.ifEmpty { "Mac" }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Enter Pairing PIN ($targetName)")
             .setView(container)
             .setPositiveButton("Connect") { _, _ ->
                 val rawDigits = pinInput.text.toString().filter { it.isDigit() }
                 if (rawDigits.length < 8) {
                     cursorOverlay.updateStatus("PIN must be 8 digits (e.g. 1234-5678)", streaming = false)
                     return@setPositiveButton
-                }
-                val matched = discoveredMacs.values.firstOrNull {
-                    it.pin.filter { c -> c.isDigit() } == rawDigits
                 }
                 activeTransportMode = TransportMode.WIFI
                 cursorOverlay.activeTransportMode = TransportMode.WIFI
@@ -2176,18 +2551,45 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 cursorOverlay.isConnecting = true
 
                 val formattedPin = "${rawDigits.substring(0, 4)}-${rawDigits.substring(4)}"
-                if (matched != null) {
-                    saveMacProfile(matched.name, matched.ip, matched.port, formattedPin)
-                    cursorOverlay.updateStatus("Found ${matched.name}! Connecting with PIN $formattedPin...", streaming = false)
-                    connectFromQrUriOrRawText("${matched.ip}:${matched.port}")
-                } else {
-                    saveMacProfile("HyperScreen-Mac", discoveredLanHostIp, preferredHostPort, formattedPin)
-                    cursorOverlay.updateStatus("Connecting to $discoveredLanHostIp with PIN $formattedPin...", streaming = false)
-                    connectFromQrUriOrRawText("$discoveredLanHostIp:$preferredHostPort")
-                }
+                val macName = cursorOverlay.discoveredMacName.ifEmpty { "HyperScreen-Mac" }
+                saveMacProfile(macName, discoveredLanHostIp, preferredHostPort, formattedPin)
+                cursorOverlay.updateStatus("Connecting to $macName with PIN $formattedPin...", streaming = false)
+                connectFromQrUriOrRawText("$discoveredLanHostIp:$preferredHostPort")
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(p.primaryBtnBg)
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(p.muted)
+        }
+        dialog.show()
+    }
+
+    private fun showSelectMacHostDialog() {
+        val macs = discoveredMacs.values.toList()
+        if (macs.isEmpty()) {
+            showPairingPinDialog()
+            return
+        }
+        val options = macs.map { "${it.name} (${it.ip})" }.toTypedArray()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Select Mac Host on Wi-Fi")
+            .setItems(options) { _, which ->
+                val selected = macs[which]
+                discoveredLanHostIp = selected.ip
+                cursorOverlay.discoveredLanIpLabel = selected.ip
+                cursorOverlay.discoveredMacName = selected.name
+                preferredHostPort = selected.port
+                showPairingPinDialog()
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(cursorOverlay.palette.muted)
+        }
+        dialog.show()
     }
 
     fun onDisplayReconfigured(newW: Int, newH: Int, rotation: Int) {
@@ -2365,15 +2767,21 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     @SuppressLint("MissingPermission")
     private fun showBuiltInQrScannerAndIpDialog() {
         val density = resources.displayMetrics.density
+        val p = cursorOverlay.palette
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding((20 * density).toInt(), (10 * density).toInt(), (20 * density).toInt(), (6 * density).toInt())
+            setPadding((20 * density).toInt(), (14 * density).toInt(), (20 * density).toInt(), (8 * density).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(p.cardBg)
+                cornerRadius = 24 * density
+                setStroke((1.5f * density).toInt(), p.cardBorder)
+            }
         }
 
         val statusHint = TextView(this).apply {
             text = "Point camera at the macOS HyperScreen QR Code, or enter Mac IP below:"
-            setTextColor(Color.parseColor("#CBD5E1"))
+            setTextColor(p.muted)
             textSize = 13.5f
             gravity = Gravity.CENTER_HORIZONTAL
         }
@@ -2387,7 +2795,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 topMargin = (10 * density).toInt()
                 bottomMargin = (10 * density).toInt()
             }
-            setBackgroundColor(Color.parseColor("#0A0E1A"))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(p.panelBg)
+                cornerRadius = 16 * density
+                setStroke((1.5f * density).toInt(), p.panelBorder)
+            }
+            clipToOutline = true
         }
 
         val textureView = TextureView(this)
@@ -2399,10 +2812,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             )
         )
 
-        // Cyan Targeting Reticle Overlay inside the Square Camera Viewfinder
+        // Cyan/Azure Targeting Reticle Overlay inside the Square Camera Viewfinder
         val reticleView = object : View(this) {
             private val reticlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#00F2FE")
+                color = p.subtitle
                 style = Paint.Style.STROKE
                 strokeWidth = 4.5f
             }
@@ -2425,6 +2838,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val flipCamBtn = Button(this).apply {
             text = "Flip"
             textSize = 11f
+            setTextColor(p.secondaryBtnText)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(p.secondaryBtnBg)
+                cornerRadius = 12 * density
+                setStroke((1f * density).toInt(), p.secondaryBtnBorder)
+            }
         }
         previewFrame.addView(
             flipCamBtn,
@@ -2443,13 +2862,23 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             hint = "Mac IP (e.g. 192.168.18.9)"
             inputType = InputType.TYPE_CLASS_TEXT
             setText(discoveredLanHostIp)
+            setTextColor(p.body)
+            setHintTextColor(p.caption)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(p.panelBg)
+                cornerRadius = 12 * density
+                setStroke((1.5f * density).toInt(), p.panelBorder)
+            }
+            setPadding((14 * density).toInt(), (10 * density).toInt(), (14 * density).toInt(), (10 * density).toInt())
         }
         container.addView(
             ipInput,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+            ).apply {
+                topMargin = (4 * density).toInt()
+            }
         )
 
         var cameraDevice: CameraDevice? = null
@@ -2612,6 +3041,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             }
             .create()
 
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(p.primaryBtnBg)
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(p.subtitle)
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(p.muted)
+        }
+
         dialog.show()
     }
 
@@ -2661,12 +3096,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                         }
 
                         val panelHz = getDeviceRefreshRate()
-                        // Send 1920x1200 HELLO matching active panel refresh rate
+                        val pinToken = if (isUsbLoopback) 0L else (cursorOverlay.savedMacPin.filter { it.isDigit() }.toLongOrNull() ?: 0L)
+                        // Send 1920x1200 HELLO matching active panel refresh rate with authenticated pairing PIN token
                         val helloBytes = NativeCoreBridge.nativeBuildClientHelloPacket(
                             outSequence.getAndIncrement(),
                             1920,
                             1200,
                             panelHz,
+                            pinToken,
                             Build.MODEL ?: "Android Tablet"
                         )
                         synchronized(out) {
@@ -2685,10 +3122,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 true
                             }.getOrElse { ex ->
                                 if (ex is java.net.SocketTimeoutException && readHdr == 0) {
-                                    // Re-send CLIENT_HELLO on timeout so macOS emits an immediate IDR keyframe
-                                    synchronized(out) {
-                                        out.write(helloBytes)
-                                        out.flush()
+                                    // Re-send CLIENT_HELLO on timeout only when actively connecting and not in standby
+                                    if (!isMacDisplayStandby && cursorOverlay.isConnecting) {
+                                        synchronized(out) {
+                                            out.write(helloBytes)
+                                            out.flush()
+                                        }
                                     }
                                     false
                                 } else {
@@ -2753,21 +3192,37 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                     val w = directPktBuf.getInt(0)
                                     val h = directPktBuf.getInt(4)
                                     val rawReserved = directPktBuf.getShort(18).toInt() and 0xFFFF
+                                    val isAuthFailed = (rawReserved and 0x4000) != 0
                                     val isDisplayActive = (rawReserved and 0x8000) != 0 && w > 0 && h > 0
                                     val rot = rawReserved and 0x01FF
+                                    if (isAuthFailed) {
+                                        runOnUiThread {
+                                            cursorOverlay.isConnecting = false
+                                            cursorOverlay.isConnectionError = true
+                                            cursorOverlay.errorTitle = "PIN Authentication Failed"
+                                            cursorOverlay.errorDiagnostic = "Incorrect pairing PIN for $targetHost"
+                                            cursorOverlay.errorHint = "Verify the 8-digit PIN displayed on your Mac menu bar"
+                                            cursorOverlay.updateStatus("Authentication Failed", streaming = false)
+                                            cancelConnectionAttempt()
+                                        }
+                                        break
+                                    }
                                     if (!isUsbLoopback && !hasSavedCurrentProfile) {
                                         hasSavedCurrentProfile = true
                                         val mName = cursorOverlay.discoveredMacName.ifEmpty { "HyperScreen-Mac" }
                                         saveMacProfile(mName, targetHost, targetPort, cursorOverlay.discoveredMacPin)
                                     }
                                     if (isDisplayActive) {
+                                        isMacDisplayStandby = false
                                         onDisplayReconfigured(w, h, rot)
                                     } else {
+                                        isMacDisplayStandby = true
                                         runOnUiThread {
                                             cursorOverlay.hasReceivedVideoFrame = false
                                             cursorOverlay.isConnecting = false
                                             val label = if (isUsbLoopback) "USB-C" else "Wi-Fi"
                                             cursorOverlay.updateStatus("Mac Connected ($label) • Virtual Display Inactive on Mac", streaming = false)
+                                            clearVideoSurface()
                                         }
                                     }
                                 } else if (payloadLen == 2 && payloadBuf[0] == 0.toByte() && payloadBuf[1] == 0.toByte()) {
@@ -2834,7 +3289,28 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
         val discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(regType: String) {}
-            override fun onServiceLost(service: NsdServiceInfo) {}
+            override fun onServiceLost(service: NsdServiceInfo) {
+                val sName = service.serviceName ?: ""
+                val toRemove = discoveredMacs.filterValues { it.name == sName }.keys.toList()
+                for (ip in toRemove) {
+                    discoveredMacs.remove(ip)
+                    if (cursorOverlay.savedMacIp == ip) {
+                        runOnUiThread {
+                            cursorOverlay.isSavedMacOnline = false
+                            cursorOverlay.postInvalidateOnAnimation()
+                        }
+                    }
+                }
+                if (cursorOverlay.discoveredMacName == sName) {
+                    val nextMac = discoveredMacs.values.firstOrNull()
+                    if (nextMac != null) {
+                        discoveredLanHostIp = nextMac.ip
+                        cursorOverlay.discoveredLanIpLabel = nextMac.ip
+                        cursorOverlay.discoveredMacName = nextMac.name
+                    }
+                    runOnUiThread { cursorOverlay.postInvalidateOnAnimation() }
+                }
+            }
             override fun onDiscoveryStopped(serviceType: String) {}
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {}
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
@@ -2891,11 +3367,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     runCatching { socket.connect(target) }
 
                     val panelHz = getDeviceRefreshRate()
+                    val pinToken = cursorOverlay.savedMacPin.filter { it.isDigit() }.toLongOrNull() ?: 0L
                     val helloBytes = NativeCoreBridge.nativeBuildClientHelloPacket(
                         outSequence.getAndIncrement(),
                         1920,
                         1200,
                         panelHz,
+                        pinToken,
                         Build.MODEL ?: "Android Tablet"
                     )
                     socket.send(DatagramPacket(helloBytes, helloBytes.size, target))
@@ -2924,7 +3402,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                         cursorOverlay.updateStatus("Wi-Fi host not responding", streaming = false)
                                     }
                                 }
-                                socket.send(DatagramPacket(helloBytes, helloBytes.size, target))
+                                if (!isMacDisplayStandby && cursorOverlay.isConnecting) {
+                                    socket.send(DatagramPacket(helloBytes, helloBytes.size, target))
+                                }
                             }
                             continue
                         } else {
@@ -2989,8 +3469,21 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 val w = pktBuf.getInt(16)
                                 val h = pktBuf.getInt(20)
                                 val rawReserved = pktBuf.getShort(34).toInt() and 0xFFFF
+                                val isAuthFailed = (rawReserved and 0x4000) != 0
                                 val isDisplayActive = (rawReserved and 0x8000) != 0 && w > 0 && h > 0
                                 val rot = rawReserved and 0x01FF
+                                if (isAuthFailed) {
+                                    runOnUiThread {
+                                        cursorOverlay.isConnecting = false
+                                        cursorOverlay.isConnectionError = true
+                                        cursorOverlay.errorTitle = "PIN Authentication Failed"
+                                        cursorOverlay.errorDiagnostic = "Incorrect pairing PIN for ${hostAddress.hostAddress}"
+                                        cursorOverlay.errorHint = "Verify the 8-digit PIN displayed on your Mac menu bar"
+                                        cursorOverlay.updateStatus("Authentication Failed", streaming = false)
+                                        cancelConnectionAttempt()
+                                    }
+                                    return@Thread
+                                }
                                 val hIp = hostAddress.hostAddress ?: ""
                                 if (hIp.isNotEmpty() && !hIp.startsWith("127.") && !hasSavedCurrentProfile) {
                                     hasSavedCurrentProfile = true
@@ -2998,12 +3491,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                     saveMacProfile(mName, hIp, port, cursorOverlay.discoveredMacPin)
                                 }
                                 if (isDisplayActive) {
+                                    isMacDisplayStandby = false
                                     onDisplayReconfigured(w, h, rot)
                                 } else {
+                                    isMacDisplayStandby = true
                                     runOnUiThread {
                                         cursorOverlay.hasReceivedVideoFrame = false
                                         cursorOverlay.isConnecting = false
                                         cursorOverlay.updateStatus("Mac Connected (Wi-Fi) • Virtual Display Inactive on Mac", streaming = false)
+                                        clearVideoSurface()
                                     }
                                 }
                             } else {
@@ -3084,27 +3580,45 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         sendRawInputPacketAsync(pkt)
     }
 
-    private fun sendRawInputPacketAsync(pkt: ByteArray) {
-        val tcpOut = activeTcpOut.get()
-        if (tcpOut != null) {
-            Thread {
-                runCatching {
-                    synchronized(tcpOut) {
-                        tcpOut.write(pkt)
-                        tcpOut.flush()
+    private val inputEventQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>(256)
+    @Volatile private var inputWorkerThread: Thread? = null
+
+    private fun ensureInputWorkerRunning() {
+        if (inputWorkerThread?.isAlive == true) return
+        val t = Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            while (isAppRunning.get()) {
+                val pkt = runCatching { inputEventQueue.take() }.getOrNull() ?: break
+                val tcpOut = activeTcpOut.get()
+                if (tcpOut != null) {
+                    runCatching {
+                        synchronized(tcpOut) {
+                            tcpOut.write(pkt)
+                            tcpOut.flush()
+                        }
+                    }
+                    continue
+                }
+                val udpSock = activeUdpSocket.get()
+                val udpTarget = activeUdpTarget.get()
+                if (udpSock != null && udpTarget != null) {
+                    runCatching {
+                        udpSock.send(DatagramPacket(pkt, pkt.size, udpTarget))
                     }
                 }
-            }.start()
-            return
-        }
-        val udpSock = activeUdpSocket.get()
-        val udpTarget = activeUdpTarget.get()
-        if (udpSock != null && udpTarget != null) {
-            Thread {
-                runCatching {
-                    udpSock.send(DatagramPacket(pkt, pkt.size, udpTarget))
-                }
-            }.start()
+            }
+        }, "HyperScreen-Input-Writer")
+        t.isDaemon = true
+        inputWorkerThread = t
+        t.start()
+    }
+
+    private fun sendRawInputPacketAsync(pkt: ByteArray) {
+        ensureInputWorkerRunning()
+        if (!inputEventQueue.offer(pkt)) {
+            // Drop oldest motion event when saturated to maintain low-latency
+            inputEventQueue.poll()
+            inputEventQueue.offer(pkt)
         }
     }
 
@@ -3120,6 +3634,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onDestroy() {
         isAppRunning.set(false)
+        inputEventQueue.clear()
+        inputWorkerThread?.interrupt()
+        inputWorkerThread = null
         runCatching { activeStreamSocket.get()?.close() }
         runCatching { activeUdpSocket.get()?.close() }
         runCatching { unregisterReceiver(usbReceiver) }

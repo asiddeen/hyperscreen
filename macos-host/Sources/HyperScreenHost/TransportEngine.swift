@@ -67,6 +67,7 @@ public final class TransportCoordinator: @unchecked Sendable {
     private var tcpListener: NWListener?
     private var activeUDPConnection: NWConnection?
     private var activeTCPConnections: [NWConnection] = []
+    private var authenticatedEndpoints = Set<String>()
     private var usbDiscoveryTimer: DispatchSourceTimer?
     private let usbAOAManager: HSUSBAOAManager
     private let usbRingBuffer = PacketRingBuffer(capacity: 2 * 1024 * 1024)
@@ -116,7 +117,7 @@ public final class TransportCoordinator: @unchecked Sendable {
             while let (hdr, payload) = self.usbRingBuffer.popNextPacket() {
                 var fullPkt = Data(bytes: [hdr], count: MemoryLayout<hs_packet_header_t>.size)
                 fullPkt.append(payload)
-                self.parseIncomingClientPacket(fullPkt)
+                self.parseIncomingClientPacket(fullPkt, from: nil)
             }
         }
     }
@@ -454,7 +455,7 @@ public final class TransportCoordinator: @unchecked Sendable {
                 while let (hdr, payload) = ringBuffer.popNextPacket() {
                     var fullPkt = Data(bytes: [hdr], count: MemoryLayout<hs_packet_header_t>.size)
                     fullPkt.append(payload)
-                    self.parseIncomingClientPacket(fullPkt)
+                    self.parseIncomingClientPacket(fullPkt, from: connection)
                 }
             }
             if error == nil && !isComplete {
@@ -481,9 +482,8 @@ public final class TransportCoordinator: @unchecked Sendable {
             return
         }
 
-        // Advertise via Bonjour mDNS (`_hyperscreen._udp`) with pairing metadata TXT record
+        // Advertise via Bonjour mDNS (`_hyperscreen._udp`) without exposing cleartext PIN
         let txtDict: [String: Data] = [
-            "pin": sessionPairingPIN.data(using: .utf8) ?? Data(),
             "port": "\(port)".data(using: .utf8) ?? Data(),
             "ip": localLANIPAddress().data(using: .utf8) ?? Data(),
             "name": (Host.current().localizedName ?? "HyperScreen-Mac").data(using: .utf8) ?? Data()
@@ -508,18 +508,18 @@ public final class TransportCoordinator: @unchecked Sendable {
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             if case .ready = state {
-                // Activate Wireless mode and cleanly close any USB loopback connections
+                let hasActiveUsb = self.activeTCPConnections.contains { conn in
+                    let ep = String(describing: conn.endpoint)
+                    return ep.contains("127.0.0.1") || ep.contains("::1") || ep.contains("localhost")
+                }
+                // If user preferred USB or an active USB tunnel is already established, do NOT hijack with UDP
+                if hasActiveUsb && self.preferredConnection == .usb {
+                    NSLog("[HyperScreen] Retaining active USB tunnel over incoming UDP probe")
+                    return
+                }
+
+                // Activate Wireless mode only if no USB connection is active
                 self.preferredConnection = .wireless
-                for oldConn in self.activeTCPConnections {
-                    let oldEp = String(describing: oldConn.endpoint)
-                    if oldEp.contains("127.0.0.1") || oldEp.contains("::1") || oldEp.contains("localhost") {
-                        oldConn.cancel()
-                    }
-                }
-                self.activeTCPConnections.removeAll { oldConn in
-                    let oldEp = String(describing: oldConn.endpoint)
-                    return oldEp.contains("127.0.0.1") || oldEp.contains("::1") || oldEp.contains("localhost")
-                }
                 self.activeUDPConnection = connection
                 let isLoopback = String(describing: connection.endpoint).contains("127.0.0.1")
                 self.updateMode(isLoopback ? .usbADB : .wirelessLAN, clientName: String(describing: connection.endpoint))
@@ -533,7 +533,7 @@ public final class TransportCoordinator: @unchecked Sendable {
         connection.receiveMessage { [weak self] data, _, _, error in
             guard let self else { return }
             if let data, data.count >= MemoryLayout<hs_packet_header_t>.size {
-                self.parseIncomingClientPacket(data)
+                self.parseIncomingClientPacket(data, from: connection)
             }
             if error == nil {
                 self.receiveNextPacket(on: connection)
@@ -541,7 +541,7 @@ public final class TransportCoordinator: @unchecked Sendable {
         }
     }
 
-    private func parseIncomingClientPacket(_ data: Data) {
+    private func parseIncomingClientPacket(_ data: Data, from connection: NWConnection?) {
         data.withUnsafeBytes { rawBuf in
             guard let base = rawBuf.baseAddress else { return }
             let hdrPtr = base.assumingMemoryBound(to: hs_packet_header_t.self)
@@ -552,23 +552,45 @@ public final class TransportCoordinator: @unchecked Sendable {
             let payloadBytes = rawBuf.count - MemoryLayout<hs_packet_header_t>.size
             guard payloadBytes >= Int(hdr.payload_len) else { return }
 
+            let epStr = connection.map { String(describing: $0.endpoint) } ?? "usb-aoa"
+            let isLoopback = (connection == nil) || epStr.contains("127.0.0.1") || epStr.contains("::1") || epStr.contains("localhost")
+
             switch hs_packet_type_t(UInt32(hdr.type)) {
             case HS_PKT_CLIENT_HELLO:
                 guard payloadBytes >= MemoryLayout<hs_hello_payload_t>.size else { return }
                 let hello = payloadPtr.assumingMemoryBound(to: hs_hello_payload_t.self).pointee
+                let expectedPinDigits = UInt64(self.sessionPairingPIN) ?? 0
+
+                // Physical USB loopback is auto-authenticated; Wireless requires matching 8-digit PIN
+                let isAuthenticated = isLoopback || (expectedPinDigits > 0 && hello.session_token == expectedPinDigits)
+                if !isAuthenticated {
+                    NSLog("[HyperScreen] UNAUTHENTICATED connection attempt from %@ (token: %llu, expected: %llu) - rejecting", epStr, hello.session_token, expectedPinDigits)
+                    var rejectPayload = hs_hello_payload_t()
+                    rejectPayload.reserved = 0x4000 // HS_AUTH_FAILED
+                    let payloadData = Data(bytes: &rejectPayload, count: MemoryLayout<hs_hello_payload_t>.size)
+                    if let conn = connection {
+                        self.sendRawPacket(type: UInt8(HS_PKT_SERVER_HELLO.rawValue), flags: 0, sequence: &self.audioSequence, payload: payloadData, on: conn)
+                    }
+                    return
+                }
+
+                self.authenticatedEndpoints.insert(epStr)
                 delegate?.transportDidReceiveClientHello(hello)
 
             case HS_PKT_INPUT_TOUCH:
+                guard isLoopback || self.authenticatedEndpoints.contains(epStr) else { return }
                 guard payloadBytes >= MemoryLayout<hs_input_touch_t>.size else { return }
                 let touch = payloadPtr.assumingMemoryBound(to: hs_input_touch_t.self).pointee
                 delegate?.transportDidReceiveTouchInput(touch)
 
             case HS_PKT_INPUT_STYLUS:
+                guard isLoopback || self.authenticatedEndpoints.contains(epStr) else { return }
                 guard payloadBytes >= MemoryLayout<hs_input_stylus_t>.size else { return }
                 let stylus = payloadPtr.assumingMemoryBound(to: hs_input_stylus_t.self).pointee
                 delegate?.transportDidReceiveStylusInput(stylus)
 
             case HS_PKT_INPUT_KEY:
+                guard isLoopback || self.authenticatedEndpoints.contains(epStr) else { return }
                 guard payloadBytes >= MemoryLayout<hs_input_key_t>.size else { return }
                 let key = payloadPtr.assumingMemoryBound(to: hs_input_key_t.self).pointee
                 delegate?.transportDidReceiveKeyInput(key)
@@ -764,6 +786,7 @@ public final class TransportCoordinator: @unchecked Sendable {
                 conn.cancel()
             }
             self.activeTCPConnections.removeAll()
+            self.authenticatedEndpoints.removeAll()
             self.updateMode(.disconnected, clientName: nil)
         }
     }

@@ -7,8 +7,15 @@
   - Menu bar icons (`NSStatusBarButton.image`) MUST keep `isTemplate = true` so macOS automatically inverts them in Dark and Light modes.
 - **Android Client (`app-debug.apk`)**:
   - Keep `gradle-wrapper.properties` pinned to a Gradle version compatible with the active AGP (`gradle-9.3.1-bin.zip` with `AGP 9.0.0`) and `org.gradle.java.home` pointed to JDK 21 (`Android Studio.app/Contents/jbr/Contents/Home`).
+  - Always execute builds with `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleDebug` (requires `BypassSandbox: true` for Gradle daemon loopback IPC).
   - Keep `-Wl,-z,max-page-size=16384` in `CMakeLists.txt` `target_link_options` for Android 15+ 16KB page size compatibility.
   - After installing via `adb install -r`, always run `adb reverse tcp:9453 tcp:9453` so the zero-lag USB-C loopback tunnel (`127.0.0.1:9453`) is active alongside Wireless LAN.
+- **Version Bumping & Release Automation**:
+  - Root `VERSION` is the single source of truth for marketing versions (`MAJOR.MINOR.PATCH`).
+  - Automatically analyze Conventional Commits and bump version via:
+    `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/bump_version.sh auto [--commit] [--tag]`
+  - Git hooks in `.githooks/` auto-bump and amend `VERSION` on commit. Activate with `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/install_git_hooks.sh`.
+  - Both Android `versionCode` and macOS `CFBundleVersion` dynamically calculate strictly monotonic build codes from Git commit count: `(major * 100000) + (minor * 10000) + gitCommitCount`.
 
 ## 2. Hardware Video Pipeline Invariants (macOS VideoToolbox -> Android MediaCodec)
 - **Android `MediaCodec` (`LowLatencyMediaCodec`)**:
@@ -38,3 +45,8 @@
     - Set `inputType = InputType.TYPE_CLASS_PHONE` and explicitly assign `keyListener = DigitsKeyListener.getInstance("0123456789-")` AFTER setting `inputType`.
     - Always clamp cursor selection using `pinInput.text?.length ?: 0` rather than the unverified formatted string length.
     - Normalize input strings by stripping hyphens (`filter { it.isDigit() }`) before matching against Bonjour discovery or initiating socket connections.
+- **Android Theme Adaptation & In-Stream HUD Contrast**:
+  - When activities declare `android:configChanges="...|uiMode"`, `onConfigurationChanged(newConfig)` must dynamically update view palettes and request `postInvalidateOnAnimation()` without recreating the activity or disrupting active video/touch pipelines.
+  - Dynamically configure `WindowInsetsController.setSystemBarsAppearance` in fullscreen mode to invert status/navigation bar icons to match `palette.isDark`.
+  - Floating streaming HUD overlays (top-right control bar and bottom-left modifier bar) must feature dual-layer ambient drop shadows and frosted glass backgrounds so text and buttons remain 100% legible over both bright white and dark Mac desktop streams.
+  - Custom dialogs (`AlertDialog`) and input containers must bind theme colors dynamically (e.g. `dialog.setOnShowListener` for action buttons, custom rounded drawables for input backgrounds) to prevent light-on-light or dark-on-dark contrast collisions.

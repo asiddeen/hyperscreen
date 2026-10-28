@@ -45,8 +45,13 @@ if [ -f "$VERSION_FILE" ]; then
 else
     APP_VERSION="1.0.0"
 fi
+GIT_COMMIT_COUNT=$(git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null || echo 1)
+GIT_COMMIT_HASH=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 IFS='.' read -r V_MAJ V_MIN V_PAT <<< "$APP_VERSION"
-BUILD_NUMBER=$(( ${V_MAJ:-1} * 10000 + ${V_MIN:-0} * 100 + ${V_PAT:-0} ))
+BUILD_NUMBER=$(( ${V_MAJ:-1} * 100000 + ${V_MIN:-0} * 10000 + ${GIT_COMMIT_COUNT:-1} ))
+
+echo "    • CFBundleShortVersionString: $APP_VERSION"
+echo "    • CFBundleVersion:            $BUILD_NUMBER (commit #$GIT_COMMIT_COUNT, hash: $GIT_COMMIT_HASH)"
 
 cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -69,6 +74,10 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <string>${APP_VERSION}</string>
     <key>CFBundleVersion</key>
     <string>${BUILD_NUMBER}</string>
+    <key>HyperScreenGitCommit</key>
+    <string>${GIT_COMMIT_HASH}</string>
+    <key>HyperScreenCommitCount</key>
+    <integer>${GIT_COMMIT_COUNT}</integer>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>

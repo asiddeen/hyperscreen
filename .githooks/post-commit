@@ -1,0 +1,11 @@
+#!/usr/bin/env zsh
+# HyperScreen Automated Commit-Driven Version Bumping Hook
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Invoke bump_version in hook mode
+if [ -f "$ROOT_DIR/scripts/bump_version.sh" ]; then
+    zsh "$ROOT_DIR/scripts/bump_version.sh" auto --hook
+fi
