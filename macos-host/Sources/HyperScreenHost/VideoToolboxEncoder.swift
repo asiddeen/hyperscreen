@@ -23,6 +23,8 @@ public final class VideoToolboxEncoder: @unchecked Sendable {
     private let encoderQueue = DispatchQueue(label: "dev.hyperscreen.encoder.vt", qos: .userInteractive)
     private var frameCounter: UInt32 = 0
     private var forceNextIDR = true
+    private var lastForcedIDRTimestampUs: UInt64 = 0
+    private let minIDRIntervalUs: UInt64 = 250_000 // Rate-limit forced IDRs to 250ms spacing to prevent Wi-Fi congestion storms
     private var currentConfig: VirtualDisplayConfig?
     private var targetBitrateBps: Int = 45_000_000
 
@@ -111,11 +113,15 @@ public final class VideoToolboxEncoder: @unchecked Sendable {
 
         self.session = vtSession
         self.forceNextIDR = true
+        self.lastForcedIDRTimestampUs = 0
     }
 
     public func requestImmediateKeyframe() {
         encoderQueue.async {
-            self.forceNextIDR = true
+            let nowUs = DispatchTime.now().uptimeNanoseconds / 1_000
+            if nowUs >= self.lastForcedIDRTimestampUs + self.minIDRIntervalUs {
+                self.forceNextIDR = true
+            }
         }
     }
 
@@ -158,6 +164,7 @@ public final class VideoToolboxEncoder: @unchecked Sendable {
             if self.forceNextIDR {
                 frameProps[kVTEncodeFrameOptionKey_ForceKeyFrame] = kCFBooleanTrue
                 self.forceNextIDR = false
+                self.lastForcedIDRTimestampUs = DispatchTime.now().uptimeNanoseconds / 1_000
             }
 
             if isIdleRefinement {

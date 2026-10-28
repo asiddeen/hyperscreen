@@ -199,7 +199,7 @@ public final class SCStreamEngine: NSObject, SCStreamOutput, SCStreamDelegate, @
     public func startCapture(
         displayID: CGDirectDisplayID,
         config: VirtualDisplayConfig,
-        captureAudio: Bool = true
+        captureAudio: Bool = false
     ) async throws {
         // 1. Check TCC Screen Recording authorization first via CGPreflightScreenCaptureAccess()
         //    so we never spam the macOS TCC popup if a stale CDHash is in System Settings.

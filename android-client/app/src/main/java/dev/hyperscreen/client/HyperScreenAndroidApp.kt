@@ -1996,6 +1996,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val isActiveSession = AtomicBoolean(false)
     private val isSurfaceAlive = AtomicBoolean(false)
     private val isAppRunning = AtomicBoolean(true)
+    private val isBackgrounded = AtomicBoolean(false)
     private var streamThread: Thread? = null
     private val outSequence = AtomicInteger(1)
     private val activeTcpOut = AtomicReference<OutputStream?>(null)
@@ -2010,6 +2011,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     @Volatile private var activeTransportMode: TransportMode = TransportMode.USB
     @Volatile private var currentRotationAngle: Int = 0
     @Volatile private var isMacDisplayStandby = false
+    @Volatile private var wasStreamingBeforeBackground = false
+    @Volatile private var resumeTargetIp: String? = null
+    @Volatile private var resumeTargetPort: Int = 9453
 
     companion object {
         private const val PREFS_NAME = "hyperscreen_prefs"
@@ -2374,6 +2378,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        isBackgrounded.set(false)
+        if (wasStreamingBeforeBackground && !isUserDisconnected) {
+            val targetIp = resumeTargetIp ?: preferredHostIp
+            val targetPort = resumeTargetPort
+            if (isSurfaceAlive.get()) {
+                wasStreamingBeforeBackground = false
+                ensureDecoderActive()
+                connectFromQrUriOrRawText("$targetIp:$targetPort")
+            }
+        }
+    }
+
     @Suppress("DEPRECATION")
     override fun onResume() {
         super.onResume()
@@ -2418,10 +2436,34 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         super.onPause()
     }
 
+    override fun onStop() {
+        super.onStop()
+        isBackgrounded.set(true)
+        if (!isUserDisconnected && (isActiveSession.get() || cursorOverlay.hasReceivedVideoFrame || cursorOverlay.isConnecting)) {
+            wasStreamingBeforeBackground = true
+            resumeTargetIp = preferredHostIp
+            resumeTargetPort = preferredHostPort
+
+            // Cleanly pause streaming to preserve tablet battery & prevent background decode exceptions
+            runCatching { activeStreamSocket.getAndSet(null)?.close() }
+            runCatching { activeUdpSocket.getAndSet(null)?.close() }
+            runCatching { activeTcpOut.getAndSet(null)?.close() }
+            activeUdpTarget.set(null)
+            runCatching { decoder?.stop() }
+            decoder = null
+            isActiveSession.set(false)
+            cursorOverlay.hasReceivedVideoFrame = false
+            cursorOverlay.isConnecting = false
+            clearVideoSurface()
+        }
+    }
+
     private fun cancelConnectionAttempt() {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         isUserDisconnected = true
         isMacDisplayStandby = false
+        wasStreamingBeforeBackground = false
+        resumeTargetIp = null
         isActiveSession.set(false)
         hasSavedCurrentProfile = false
         cursorOverlay.isConnecting = false
@@ -2440,6 +2482,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         isUserDisconnected = true
         isMacDisplayStandby = false
+        wasStreamingBeforeBackground = false
+        resumeTargetIp = null
         isActiveSession.set(false)
         hasSavedCurrentProfile = false
         cursorOverlay.isConnecting = false
@@ -2648,6 +2692,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
 
         // 3. Start Wireless Bonjour (`_hyperscreen._udp`) discovery
         startWirelessBonjourAndUdpFec()
+
+        // 4. Resume stream if activity was backgrounded during an active session
+        if (wasStreamingBeforeBackground && !isUserDisconnected) {
+            wasStreamingBeforeBackground = false
+            val targetIp = resumeTargetIp ?: preferredHostIp
+            val targetPort = resumeTargetPort
+            connectFromQrUriOrRawText("$targetIp:$targetPort")
+        }
     }
 
     private fun checkQrDeepLinkIntent(incomingIntent: Intent?) {
@@ -3072,7 +3124,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 val targetPort = preferredHostPort
                 val isUsbLoopback = (targetHost == "127.0.0.1" || targetHost == "localhost")
 
-                if (isUserDisconnected || (activeTransportMode != TransportMode.USB && isUsbLoopback)) {
+                if (isBackgrounded.get() || isUserDisconnected || (activeTransportMode != TransportMode.USB && isUsbLoopback)) {
                     Thread.sleep(300)
                     continue
                 }
@@ -3111,7 +3163,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                             out.flush()
                         }
 
-                        while (isAppRunning.get() && !isUserDisconnected && !sock.isClosed && preferredHostIp == targetHost) {
+                        while (isAppRunning.get() && !isBackgrounded.get() && !isUserDisconnected && !sock.isClosed && preferredHostIp == targetHost) {
                             var readHdr = 0
                             val hdrSuccess = runCatching {
                                 while (readHdr < 16) {
@@ -3382,8 +3434,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     var udpTimeoutCount = 0
                     var lastSeenFrameId = 0
                     var lastDecodedFrameId = 0
+                    var lastNackSentTimeMs = 0L
 
-                    while (isAppRunning.get() && !isUserDisconnected && !Thread.currentThread().isInterrupted && activeUdpSocket.get() === socket) {
+                    while (isAppRunning.get() && !isBackgrounded.get() && !isUserDisconnected && !Thread.currentThread().isInterrupted && activeUdpSocket.get() === socket) {
                         val received = runCatching {
                             socket.receive(dg)
                             true
@@ -3422,16 +3475,20 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                             if (pktType == 0x02 && len >= 16 + 12) {
                                 val incomingFid = pktBuf.getInt(16)
                                 if (lastSeenFrameId > 0 && incomingFid > lastSeenFrameId + 1) {
-                                    // Missing frame detected on Wi-Fi - emit instant PLI NACK to trigger immediate IDR
-                                    val nack = NativeCoreBridge.nativeBuildNackPacket(
-                                        outSequence.getAndIncrement(),
-                                        incomingFid,
-                                        0xFFFF,
-                                        1,
-                                        lastDecodedFrameId
-                                    )
-                                    if (nack != null) {
-                                        runCatching { socket.send(DatagramPacket(nack, nack.size, target)) }
+                                    // Missing frame detected on Wi-Fi - emit rate-limited PLI NACK to trigger IDR (max 1 NACK per 100ms)
+                                    val now = android.os.SystemClock.uptimeMillis()
+                                    if (now - lastNackSentTimeMs >= 100L) {
+                                        lastNackSentTimeMs = now
+                                        val nack = NativeCoreBridge.nativeBuildNackPacket(
+                                            outSequence.getAndIncrement(),
+                                            incomingFid,
+                                            0xFFFF,
+                                            1,
+                                            lastDecodedFrameId
+                                        )
+                                        if (nack != null) {
+                                            runCatching { socket.send(DatagramPacket(nack, nack.size, target)) }
+                                        }
                                     }
                                 }
                                 if (incomingFid > lastSeenFrameId) {
