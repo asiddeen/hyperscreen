@@ -6,7 +6,7 @@
     `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/package_macos_app.sh`
   - Menu bar icons (`NSStatusBarButton.image`) MUST keep `isTemplate = true` so macOS automatically inverts them in Dark and Light modes.
 - **Android Client (`app-debug.apk`)**:
-  - Keep `gradle-wrapper.properties` pinned to a Gradle version compatible with the active AGP (`gradle-9.3.1-bin.zip` with `AGP 9.0.0`) and `org.gradle.java.home` pointed to JDK 21 (`Android Studio.app/Contents/jbr/Contents/Home`).
+  - Keep `gradle-wrapper.properties` pinned to a Gradle version compatible with the active AGP (`gradle-9.3.1-bin.zip` with `AGP 9.0.0`). Do NOT hardcode machine-specific paths like `org.gradle.java.home` in `gradle.properties`.
   - Always execute builds with `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradlew assembleDebug` (requires `BypassSandbox: true` for Gradle daemon loopback IPC).
   - Keep `-Wl,-z,max-page-size=16384` in `CMakeLists.txt` `target_link_options` for Android 15+ 16KB page size compatibility.
   - After installing via `adb install -r`, always run `adb reverse tcp:9453 tcp:9453` so the zero-lag USB-C loopback tunnel (`127.0.0.1:9453`) is active alongside Wireless LAN.
@@ -16,7 +16,7 @@
     `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/bump_version.sh auto [--commit] [--tag]`
   - Publish releases strictly and safely via:
     `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/release.sh [patch|minor|major|auto]`
-    (Verifies clean git state, runs core tests, bumps `VERSION`, creates annotated tag `v*`, and pushes to GitHub to trigger GitHub Actions release workflow).
+    (Verifies clean git state, runs core tests, packages macOS DMG and Android APK locally, bumps `VERSION`, creates annotated tag `v*`, and publishes to GitHub).
   - Git hooks in `.githooks/` auto-bump and amend `VERSION` on commit. Activate with `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/install_git_hooks.sh`.
   - Both Android `versionCode` and macOS `CFBundleVersion` dynamically calculate strictly monotonic build codes from Git commit count: `(major * 100000) + (minor * 10000) + gitCommitCount`.
 

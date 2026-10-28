@@ -202,23 +202,21 @@ JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./gradle
    - Clearly explain the problem being solved or the feature added.
    - Reference any linked issues (e.g., `Closes #12`).
    - Note the hardware tested (Mac model, macOS version, Android tablet model, Android OS version).
-4. **CI Matrix Checks**:
-   Ensure all GitHub Actions checks pass:
-   - `core-tests` (Ubuntu & macOS runners)
-   - `macos-host` (Swift 6 + VideoToolbox compilation)
-   - `android-client` (Gradle APK assembly)
+4. **CI Checks**:
+   Ensure GitHub Actions checks pass:
+   - `core-tests` (C++20 Core Protocol & FEC suite on Ubuntu, runs in ~15-20s)
 
 ---
 
 ## Release Workflow
 
-Releases are strictly gated behind annotated Git tags (`v*`) and are not triggered by standard commits:
+HyperScreen uses an automated local release pipeline to preserve developer velocity and conserve CI runner minutes:
 
-* To run release pre-flight checks, bump versions, tag, and publish to GitHub in a single command:
+* To run release pre-flight checks, compile C++ core tests, package macOS `.dmg` and Android `.apk`, bump versions, tag, and publish to GitHub in a single command:
   ```bash
   zsh scripts/release.sh auto
   ```
-* See [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for details on GitHub Actions automated DMG and APK asset packaging.
+* See [`scripts/release.sh`](scripts/release.sh) for details on automated local binary packaging and GitHub CLI release publishing.
 
 ---
 
