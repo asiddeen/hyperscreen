@@ -20,6 +20,7 @@
   <a href="#2-low-latency-48khz-mac-audio-streaming"><img src="https://img.shields.io/badge/Audio-48kHz%20Stereo%20%7C%20sub--10ms-f43f5e?style=flat-square" alt="Audio"></a>
   <a href="#1-zero-adb-plug-and-play-usb-c-iousbhost--usbaccessory-aoa-v2"><img src="https://img.shields.io/badge/Transport-Zero--ADB%20AOA%20v2%20%7C%20UDP%20FEC-a855f7?style=flat-square" alt="Transport"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License"></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg?style=flat-square" alt="Contributions Welcome"></a>
   <a href="https://deepmind.google"><img src="https://img.shields.io/badge/Engineered%20with-Google%20DeepMind%20Antigravity-4285F4?style=flat-square&logo=google&logoColor=white" alt="Engineered with Antigravity"></a>
 </p>
 
@@ -210,6 +211,12 @@ cmake -B build -S core -DBUILD_TESTING=ON && cmake --build build && ctest --test
 # 2. Hardware VideoToolbox Loopback Benchmark
 build/HyperScreen.app/Contents/MacOS/HyperScreenHost --benchmark-loopback
 ```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [**Contributing Guide**](CONTRIBUTING.md) for details on code style, hardware invariants, Conventional Commits, and how to submit pull requests.
 
 ---
 
