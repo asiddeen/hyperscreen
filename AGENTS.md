@@ -14,6 +14,9 @@
   - Root `VERSION` is the single source of truth for marketing versions (`MAJOR.MINOR.PATCH`).
   - Automatically analyze Conventional Commits and bump version via:
     `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/bump_version.sh auto [--commit] [--tag]`
+  - Publish releases strictly and safely via:
+    `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/release.sh [patch|minor|major|auto]`
+    (Verifies clean git state, runs core tests, bumps `VERSION`, creates annotated tag `v*`, and pushes to GitHub to trigger GitHub Actions release workflow).
   - Git hooks in `.githooks/` auto-bump and amend `VERSION` on commit. Activate with `zsh /Users/asiddeenmuhammad/Projects/hyperscreen/scripts/install_git_hooks.sh`.
   - Both Android `versionCode` and macOS `CFBundleVersion` dynamically calculate strictly monotonic build codes from Git commit count: `(major * 100000) + (minor * 10000) + gitCommitCount`.
 
