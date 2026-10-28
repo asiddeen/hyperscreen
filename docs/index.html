@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="HyperScreen - Ultra-low-latency 120Hz/144Hz second display and 48kHz stereo system audio for Mac to Android over USB-C and Wireless UDP.">
+  <meta name="theme-color" content="#0A0E1A" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F8FAFC" media="(prefers-color-scheme: light)">
+  <title>HyperScreen Pro • Ultra-Low-Latency Mac ↔ Android Display & Audio</title>
+  <link rel="icon" type="image/png" href="assets/icons/AppIcon_1024.png">
+
+  <style>
+    :root {
+      /* Mandatory modern web color-scheme */
+      color-scheme: light dark;
+
+      /* Color Tokens using light-dark() with standard fallbacks */
+      --bg-base-light: #F8FAFC;
+      --bg-base-dark: #070B14;
+      --bg-base: light-dark(var(--bg-base-light), var(--bg-base-dark));
+
+      --card-bg-light: rgba(255, 255, 255, 0.85);
+      --card-bg-dark: rgba(15, 23, 42, 0.75);
+      --card-bg: light-dark(var(--card-bg-light), var(--card-bg-dark));
+
+      --card-border-light: rgba(203, 213, 225, 0.8);
+      --card-border-dark: rgba(51, 65, 85, 0.6);
+      --card-border: light-dark(var(--card-border-light), var(--card-border-dark));
+
+      --text-main-light: #0F172A;
+      --text-main-dark: #F8FAFC;
+      --text-main: light-dark(var(--text-main-light), var(--text-main-dark));
+
+      --text-muted-light: #475569;
+      --text-muted-dark: #94A3B8;
+      --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+
+      --primary-light: #0284C7;
+      --primary-dark: #38BDF8;
+      --primary: light-dark(var(--primary-light), var(--primary-dark));
+
+      --accent-cyan: #06B6D4;
+      --accent-emerald: #10B981;
+      --accent-purple: #8B5CF6;
+      --accent-pink: #F43F5E;
+
+      --code-bg-light: #E2E8F0;
+      --code-bg-dark: #0F172A;
+      --code-bg: light-dark(var(--code-bg-light), var(--code-bg-dark));
+
+      --badge-bg-light: rgba(2, 132, 199, 0.1);
+      --badge-bg-dark: rgba(56, 189, 248, 0.15);
+      --badge-bg: light-dark(var(--badge-bg-light), var(--badge-bg-dark));
+
+      --shadow-light: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+      --shadow-dark: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+      --shadow: light-dark(var(--shadow-light), var(--shadow-dark));
+
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.25s ease, color 0.25s ease;
+    }
+
+    /* Ambient background gradient glow */
+    .ambient-glow {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 1200px;
+      height: 500px;
+      background: radial-gradient(circle at 50% 15%, rgba(56, 189, 248, 0.18) 0%, rgba(139, 92, 246, 0.12) 40%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Navigation */
+    header {
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background-color: light-dark(rgba(248, 250, 252, 0.8), rgba(7, 11, 20, 0.8));
+      border-bottom: 1px solid var(--card-border);
+      z-index: 100;
+      padding: 0.85rem 1.5rem;
+    }
+
+    .nav-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text-main);
+      font-weight: 700;
+      font-size: 1.25rem;
+    }
+
+    .brand img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.5rem;
+      align-items: center;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .btn-github {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 9999px;
+      border: 1px solid var(--card-border);
+      background-color: var(--card-bg);
+      color: var(--text-main);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-github:hover {
+      transform: translateY(-1px);
+      border-color: var(--primary);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      padding: 2.5rem 0 3.5rem;
+    }
+
+    .pill-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 1rem;
+      border-radius: 9999px;
+      background-color: var(--badge-bg);
+      color: var(--primary);
+      border: 1px solid var(--card-border);
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1.25rem;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--accent-purple) 60%, var(--accent-pink) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+      color: var(--text-muted);
+      max-width: 800px;
+      margin: 0 auto 2.5rem;
+    }
+
+    .cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 3rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      padding: 0.85rem 1.6rem;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0284C7 0%, #2563EB 100%);
+      color: #FFFFFF;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+    }
+
+    .btn-secondary {
+      background-color: var(--card-bg);
+      color: var(--text-main);
+      border: 1px solid var(--card-border);
+      box-shadow: var(--shadow);
+    }
+
+    .btn-secondary:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+    }
+
+    /* Hero Banner Media */
+    .hero-media {
+      position: relative;
+      margin: 0 auto 4rem;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid var(--card-border);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-media img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Feature Grid */
+    .section-title {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .section-title h2 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.6rem;
+    }
+
+    .section-title p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      max-width: 650px;
+      margin: 0 auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 4rem;
+    }
+
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+      box-shadow: var(--shadow);
+    }
+
+    .feature-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--primary);
+    }
+
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      display: inline-block;
+    }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.6rem;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    /* Comparison Table */
+    .table-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      margin-bottom: 4rem;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      padding: 1.1rem 1.4rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    th {
+      background: light-dark(rgba(241, 245, 249, 0.7), rgba(15, 23, 42, 0.9));
+      color: var(--text-main);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .highlight-cell {
+      color: var(--primary);
+      font-weight: 700;
+      background: light-dark(rgba(2, 132, 199, 0.05), rgba(56, 189, 248, 0.08));
+    }
+
+    /* Code Snippet Box */
+    .code-box {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      overflow-x: auto;
+      margin-top: 1rem;
+    }
+
+    .code-box code {
+      color: var(--text-main);
+      white-space: nowrap;
+    }
+
+    .btn-copy {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-copy:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 2.5rem 1.5rem;
+      background: light-dark(rgba(241, 245, 249, 0.5), rgba(7, 11, 20, 0.8));
+      text-align: center;
+      margin-top: auto;
+    }
+
+    .footer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 1.1rem;
+      border-radius: 9999px;
+      border: 1px solid var(--card-border);
+      background-color: var(--card-bg);
+      color: var(--text-main);
+      font-size: 0.88rem;
+      text-decoration: none;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+
+    .footer-text {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
+    /* Forced Colors Mode Accessibility */
+    @media (forced-colors: active) {
+      .btn-primary, .btn-secondary, .feature-card, .table-card, header, .code-box {
+        border: 2px solid ButtonText !important;
+      }
+      .gradient-text {
+        -webkit-text-fill-color: CanvasText !important;
+      }
+      .highlight-cell {
+        background: Highlight !important;
+        color: HighlightText !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-glow" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <img src="assets/icons/AppIcon_1024.png" alt="HyperScreen Logo">
+        <span>HyperScreen</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#comparison">Benchmarks</a></li>
+        <li><a href="#install">Install</a></li>
+        <li>
+          <a href="https://github.com/hyperscreen/hyperscreen" class="btn-github" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="container">
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="pill-badge">
+        <span>⚡ Release v1.5.2 Available</span>
+        <span>•</span>
+        <span>Sub-8ms Glass-to-Glass Latency</span>
+      </div>
+
+      <h1>
+        Turn Your Android Tablet Into a<br>
+        <span class="gradient-text">120Hz Pro Mac Display &amp; Audio</span>
+      </h1>
+
+      <p>
+        The hardware-accelerated, high-fidelity second display and 48kHz stereo system audio engine for Apple Silicon &amp; Intel Macs over Zero-ADB USB-C and 0ms FEC Wireless UDP.
+      </p>
+
+      <div class="cta-group">
+        <a href="https://github.com/hyperscreen/hyperscreen/releases/latest" class="btn btn-primary">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          <span>Download for macOS (.dmg)</span>
+        </a>
+        <a href="https://github.com/hyperscreen/hyperscreen/releases/latest" class="btn btn-secondary">
+          <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.552 0 .9993.4486.9993 1.0003s-.4473 1.0003-.9993 1.0003m-11.046 0c-.5511 0-.9993-.4486-.9993-1.0003s.4482-1.0003.9993-1.0003c.5511 0 .9993.4486.9993 1.0003s-.4482 1.0003-.9993 1.0003m11.4045-6.02l1.996-3.4565c.0837-.145.034-3315-.111-.4153-.1442-.0837-.3307-.034-.4144.111l-2.0253 3.508C15.658 8.7844 13.882 8.441 12 8.441s-3.658.3434-5.3218 1.0286L4.6529 5.9616c-.0837-.145-.2702-.1947-.4144-.111-.145.0838-.1947.2703-.111.4153l1.996 3.4565C2.688 11.642 0 15.006 0 19.5h24c0-4.494-2.688-7.858-6.1185-10.1786"/>
+          </svg>
+          <span>Download Android APK</span>
+        </a>
+      </div>
+
+      <div class="hero-media">
+        <img src="assets/banners/hyperscreen_hero_banner.jpg" alt="HyperScreen 120Hz display streaming on Galaxy Tab S9 and MacBook Pro">
+      </div>
+    </section>
+
+    <!-- Key Architecture Features -->
+    <section id="features">
+      <div class="section-title">
+        <h2>Engineered for Ultra-Low Latency</h2>
+        <p>Combining kernel-level macOS VideoToolbox encoding with Android low-latency MediaCodec decoding and non-blocking audio.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">⚡</span>
+          <h3>Zero-ADB USB-C AOA v2</h3>
+          <p>Plugging in USB-C automatically launches HyperScreen via native Android Open Accessory v2 with zero-copy kernel bulk transfers. No USB debugging or developer options required.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">🔊</span>
+          <h3>48kHz Stereo System Audio</h3>
+          <p>Captures clean Mac system audio directly via ScreenCaptureKit and plays back with sub-10ms latency on tablet speakers using non-blocking low-latency AudioTrack streams.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">📊</span>
+          <h3>AIMD Adaptive Bitrate (ABR)</h3>
+          <p>Real-time RTT telemetry pings guide host-side AIMD congestion control between 8 and 55 Mbps, matched with an in-stream glassmorphic HUD showing live FPS, latency, and throughput.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">🛡️</span>
+          <h3>0ms Forward Error Correction</h3>
+          <p>MTU-sliced UDP datagrams protected by Galois Field GF(2^8) Cauchy Matrix FEC recover dropped Wi-Fi packets instantly without stalling for TCP retransmission.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">✏️</span>
+          <h3>240Hz Vector Cursor &amp; S-Pen</h3>
+          <p>A decoupled 240Hz 1-Euro smoothed cursor plane paired with full S-Pen / USI stylus pressure, tilt, and hover mapped to native macOS CGEvent tablet pointer events.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">🔄</span>
+          <h3>Live USB ↔ Wi-Fi Handover</h3>
+          <p>Seamlessly promote active Wi-Fi sessions to high-speed USB-C when plugged in, and fall back to Wi-Fi if detached, all without tearing down your active Mac desktop session.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison Table -->
+    <section id="comparison">
+      <div class="section-title">
+        <h2>Benchmark Comparison</h2>
+        <p>How HyperScreen stacks up against industry alternatives on identical 2560x1600 @ 120Hz display workloads.</p>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature / Metric</th>
+                <th>HyperScreen Pro</th>
+                <th>SideScreen</th>
+                <th>Duet Display</th>
+                <th>Spacedesk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Glass-to-Glass Latency</strong></td>
+                <td class="highlight-cell"><strong>&lt; 8 ms</strong></td>
+                <td>22 ms</td>
+                <td>35 ms</td>
+                <td>45 ms</td>
+              </tr>
+              <tr>
+                <td><strong>Refresh Rates</strong></td>
+                <td class="highlight-cell"><strong>120Hz / 144Hz HiDPI</strong></td>
+                <td>60Hz (capped)</td>
+                <td>60Hz</td>
+                <td>60Hz</td>
+              </tr>
+              <tr>
+                <td><strong>USB-C Protocol</strong></td>
+                <td class="highlight-cell"><strong>Zero-ADB AOA v2 + Loopback</strong></td>
+                <td>Requires ADB / Dev Options</td>
+                <td>Proprietary driver</td>
+                <td>TCP only</td>
+              </tr>
+              <tr>
+                <td><strong>Audio Latency</strong></td>
+                <td class="highlight-cell"><strong>Sub-10ms (48kHz Stereo)</strong></td>
+                <td>No Audio</td>
+                <td>60 ms</td>
+                <td>80 ms</td>
+              </tr>
+              <tr>
+                <td><strong>Loss Recovery</strong></td>
+                <td class="highlight-cell"><strong>0ms GF(2^8) FEC</strong></td>
+                <td>TCP retransmission drop</td>
+                <td>TCP retry stall</td>
+                <td>TCP stall</td>
+              </tr>
+              <tr>
+                <td><strong>Stylus Input</strong></td>
+                <td class="highlight-cell"><strong>Pressure + Tilt + Prediction</strong></td>
+                <td>Touch only</td>
+                <td>Paid subscription</td>
+                <td>No tilt/pressure</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Install / Quick Start -->
+    <section id="install">
+      <div class="section-title">
+        <h2>Quick Start Installation</h2>
+        <p>Get up and running in less than 60 seconds.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <h3>🍎 macOS Host Setup</h3>
+          <p>Install via Homebrew Cask or download the signed DMG installer:</p>
+          <div class="code-box">
+            <code>brew install --cask build/hyperscreen.rb</code>
+            <button class="btn-copy" onclick="navigator.clipboard.writeText('brew install --cask build/hyperscreen.rb'); this.innerText='Copied!';">Copy</button>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <h3>🤖 Android Tablet Setup</h3>
+          <p>Install the debug APK and open the loopback tunnel:</p>
+          <div class="code-box">
+            <code>adb install -r app-debug.apk && adb reverse tcp:9453 tcp:9453</code>
+            <button class="btn-copy" onclick="navigator.clipboard.writeText('adb install -r app-debug.apk && adb reverse tcp:9453 tcp:9453'); this.innerText='Copied!';">Copy</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <a href="https://deepmind.google" class="footer-pill" target="_blank" rel="noopener">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#4285F4" aria-hidden="true">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/>
+      </svg>
+      <span>Engineered with Google DeepMind Antigravity</span>
+    </a>
+    <p class="footer-text">
+      HyperScreen Pro is open source software released under the <a href="https://github.com/hyperscreen/hyperscreen/blob/main/LICENSE" style="color: var(--primary);">MIT License</a>.
+    </p>
+  </footer>
+</body>
+</html>

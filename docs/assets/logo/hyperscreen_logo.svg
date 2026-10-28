@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 220" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient for Icon -->
+    <radialGradient id="iconBg" cx="50%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#1A2138" />
+      <stop offset="45%" stop-color="#0E1220" />
+      <stop offset="100%" stop-color="#06080F" />
+    </radialGradient>
+
+    <linearGradient id="iconBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#818CF8" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#C084FC" stop-opacity="0.2" />
+    </linearGradient>
+
+    <!-- Wordmark Gradients -->
+    <linearGradient id="hyperGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="35%" stop-color="#00F2FE" />
+      <stop offset="70%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#C084FC" />
+    </linearGradient>
+
+    <linearGradient id="screenGradDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#94A3B8" />
+    </linearGradient>
+
+    <linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F2FE" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.15" />
+    </linearGradient>
+
+    <!-- Neon Gradients -->
+    <linearGradient id="cyanNeon" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+
+    <linearGradient id="violetNeon" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#C084FC" />
+    </linearGradient>
+
+    <linearGradient id="beamGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="50%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#F43F5E" />
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="logoGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <!-- ==================== LOGOMARK ICON (200x200 scaled to 180x180) ==================== -->
+  <g transform="translate(20, 20)">
+    <!-- Base Squircle -->
+    <rect x="0" y="0" width="180" height="180" rx="42" fill="url(#iconBg)" filter="url(#dropShadow)" />
+    <rect x="0" y="0" width="180" height="180" rx="42" fill="none" stroke="url(#iconBorder)" stroke-width="2" />
+
+    <!-- Ambient Glow -->
+    <circle cx="56" cy="90" r="45" fill="#00F2FE" opacity="0.16" filter="url(#logoGlow)" />
+    <circle cx="124" cy="90" r="45" fill="#A855F7" opacity="0.16" filter="url(#logoGlow)" />
+
+    <!-- Left Screen (Mac) -->
+    <rect x="24" y="44" width="60" height="92" rx="7" fill="#141B2D" stroke="#334155" stroke-width="1.5" />
+    <rect x="26" y="46" width="56" height="88" rx="6" fill="#0F172A" />
+    <circle cx="34" cy="53" r="1.5" fill="#EF4444" opacity="0.8" />
+    <circle cx="39" cy="53" r="1.5" fill="#F59E0B" opacity="0.8" />
+    <circle cx="44" cy="53" r="1.5" fill="#10B981" opacity="0.8" />
+
+    <!-- Right Screen (Android) -->
+    <rect x="96" y="44" width="60" height="92" rx="7" fill="#181329" stroke="#473869" stroke-width="1.5" />
+    <rect x="98" y="46" width="56" height="88" rx="6" fill="#0F1123" />
+    <circle cx="147" cy="53" r="1.5" fill="#A855F7" opacity="0.7" />
+
+    <!-- Hyper 'H' Stems -->
+    <path d="M60 56 L60 124" stroke="url(#cyanNeon)" stroke-width="7" stroke-linecap="round" filter="url(#logoGlow)" />
+    <path d="M60 60 L60 120" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" />
+
+    <path d="M120 56 L120 124" stroke="url(#violetNeon)" stroke-width="7" stroke-linecap="round" filter="url(#logoGlow)" />
+    <path d="M120 60 L120 120" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" />
+
+    <!-- Cross Beam Bridge -->
+    <path d="M57 90 L123 90" stroke="url(#beamGrad)" stroke-width="6" stroke-linecap="round" filter="url(#logoGlow)" />
+    <path d="M60 90 L120 90" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" />
+
+    <!-- Center Pulse Core -->
+    <circle cx="90" cy="90" r="5" fill="#00F2FE" filter="url(#logoGlow)" />
+    <circle cx="90" cy="90" r="2.5" fill="#FFFFFF" />
+  </g>
+
+  <!-- ==================== TYPOGRAPHY & WORDMARK ==================== -->
+  <g transform="translate(230, 40)">
+    <!-- "HyperScreen" Text -->
+    <text x="0" y="82" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', sans-serif" font-size="78" font-weight="900" letter-spacing="-1.5">
+      <tspan fill="url(#hyperGrad)">Hyper</tspan>
+      <tspan fill="url(#screenGradDark)">Screen</tspan>
+    </text>
+
+    <!-- Subtitle Pill / Engine Specs -->
+    <g transform="translate(2, 106)">
+      <!-- Pill Backdrop -->
+      <rect x="0" y="0" width="310" height="30" rx="15" fill="url(#badgeGrad)" stroke="#38BDF8" stroke-width="1" stroke-opacity="0.4" />
+
+      <!-- Speed indicator dot -->
+      <circle cx="16" cy="15" r="4" fill="#00F2FE" filter="url(#logoGlow)" />
+
+      <!-- Text -->
+      <text x="28" y="19.5" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', sans-serif" font-size="11.5" font-weight="700" letter-spacing="1.2">
+        SUB-8MS SECOND DISPLAY ENGINE
+      </text>
+    </g>
+
+    <!-- Feature Tags -->
+    <g transform="translate(324, 106)">
+      <rect x="0" y="0" width="95" height="30" rx="15" fill="#818CF8" fill-opacity="0.12" stroke="#818CF8" stroke-width="1" stroke-opacity="0.3" />
+      <text x="47.5" y="19" fill="#C084FC" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="0.8">
+        120Hz HiDPI
+      </text>
+    </g>
+
+    <g transform="translate(429, 106)">
+      <rect x="0" y="0" width="138" height="30" rx="15" fill="#38BDF8" fill-opacity="0.1" stroke="#38BDF8" stroke-width="1" stroke-opacity="0.3" />
+      <text x="69" y="19" fill="#7DD3FC" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="0.8">
+        ZERO-ADB USB-C
+      </text>
+    </g>
+
+    <g transform="translate(577, 106)">
+      <rect x="0" y="0" width="96" height="30" rx="15" fill="#A855F7" fill-opacity="0.1" stroke="#A855F7" stroke-width="1" stroke-opacity="0.3" />
+      <text x="48" y="19" fill="#E879F9" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="0.8">
+        5GHz P2P
+      </text>
+    </g>
+  </g>
+</svg>
