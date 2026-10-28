@@ -13,6 +13,7 @@
 static void test_protocol_header_and_slicing() {
     static_assert(sizeof(hs_packet_header_t) == 16, "hs_packet_header_t must be 16 bytes");
     static_assert(sizeof(hs_video_slice_header_t) == 16, "hs_video_slice_header_t must be 16 bytes");
+    static_assert(sizeof(hs_telemetry_ping_t) == 16, "hs_telemetry_ping_t must be 16 bytes");
 
     hs_packet_header_t hdr{};
     hs_packet_header_init(&hdr, HS_PKT_VIDEO_SLICE, 42, 1024, HS_VIDEO_FLAG_IDR);
@@ -21,6 +22,30 @@ static void test_protocol_header_and_slicing() {
     /* Corrupt 1 bit and ensure CRC-16 rejects it */
     hdr.payload_len ^= 0x01;
     assert(!hs_packet_header_validate(&hdr));
+
+    /* Test Telemetry Ping/Pong packet build and validation */
+    uint8_t telem_buf[32]{};
+    size_t telem_len = hs_build_telemetry_packet(
+        HS_PKT_PING_TELEMETRY,
+        77,
+        123456789ULL,
+        999,
+        2,
+        3400,
+        telem_buf,
+        sizeof(telem_buf)
+    );
+    assert(telem_len == 32);
+    const auto *t_hdr = reinterpret_cast<const hs_packet_header_t *>(telem_buf);
+    assert(hs_packet_header_validate(t_hdr));
+    assert(t_hdr->type == HS_PKT_PING_TELEMETRY);
+    assert(t_hdr->sequence == 77);
+    assert(t_hdr->payload_len == 16);
+    const auto *t_payload = reinterpret_cast<const hs_telemetry_ping_t *>(telem_buf + 16);
+    assert(t_payload->host_timestamp_us == 123456789ULL);
+    assert(t_payload->last_decoded_frame_id == 999);
+    assert(t_payload->packets_lost_recent == 2);
+    assert(t_payload->decode_time_us == 3400);
 
     /* Test MTU video frame slicing */
     std::vector<uint8_t> fake_frame(3500);

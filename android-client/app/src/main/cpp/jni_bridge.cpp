@@ -260,6 +260,34 @@ Java_dev_hyperscreen_client_NativeCoreBridge_nativeBuildNackPacket(
     return arr;
 }
 
+/* Builds an `HS_PKT_PING_TELEMETRY` packet for RTT measurement and dynamic ABR */
+JNIEXPORT jbyteArray JNICALL
+Java_dev_hyperscreen_client_NativeCoreBridge_nativeBuildTelemetryPingPacket(
+    JNIEnv *env,
+    jobject /*thiz*/,
+    jint sequence,
+    jlong hostTimestampUs,
+    jint lastDecodedFrameId,
+    jint packetsLostRecent,
+    jint decodeTimeUs
+) {
+    uint8_t buf[sizeof(hs_packet_header_t) + sizeof(hs_telemetry_ping_t)];
+    size_t len = hs_build_telemetry_packet(
+        HS_PKT_PING_TELEMETRY,
+        static_cast<uint32_t>(sequence),
+        static_cast<uint64_t>(hostTimestampUs),
+        static_cast<uint32_t>(lastDecodedFrameId),
+        static_cast<uint16_t>(packetsLostRecent),
+        static_cast<uint16_t>(decodeTimeUs),
+        buf,
+        sizeof(buf)
+    );
+    if (len == 0) return nullptr;
+    jbyteArray arr = env->NewByteArray(static_cast<jsize>(len));
+    env->SetByteArrayRegion(arr, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(buf));
+    return arr;
+}
+
 /* Zero-copy writev of a Finger Touch / Virtual Trackpad gesture packet to USB AOA or Socket fd */
 JNIEXPORT jint JNICALL
 Java_dev_hyperscreen_client_NativeCoreBridge_nativeWriteTouchEventToFd(

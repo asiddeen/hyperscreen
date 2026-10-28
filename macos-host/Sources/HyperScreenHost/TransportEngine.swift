@@ -25,6 +25,11 @@ public protocol HyperScreenTransportDelegate: AnyObject, Sendable {
     func transportDidReceiveKeyInput(_ key: hs_input_key_t)
     func transportDidReceiveVideoNack(_ nack: hs_video_nack_t)
     func transportDidUpdateRTT(rttMicroseconds: UInt64)
+    func transportDidReceiveTelemetry(rttMicroseconds: UInt64, packetsLost: UInt16, decodeTimeUs: UInt16)
+}
+
+public extension HyperScreenTransportDelegate {
+    func transportDidReceiveTelemetry(rttMicroseconds: UInt64, packetsLost: UInt16, decodeTimeUs: UInt16) {}
 }
 
 /// Android Open Accessory v2 (AOA) Constants (`https://source.android.com/docs/core/interaction/accessories/aoa2`)
@@ -69,6 +74,7 @@ public final class TransportCoordinator: @unchecked Sendable {
     private var activeTCPConnections: [NWConnection] = []
     private var authenticatedEndpoints = Set<String>()
     private var usbDiscoveryTimer: DispatchSourceTimer?
+    private var telemetryTimer: DispatchSourceTimer?
     private let usbAOAManager: HSUSBAOAManager
     private let usbRingBuffer = PacketRingBuffer(capacity: 2 * 1024 * 1024)
 
@@ -130,9 +136,12 @@ public final class TransportCoordinator: @unchecked Sendable {
         startWirelessUDPListener(port: port)
         startUSBTCPListener(port: port)
         startUSBDiscoveryLoop(port: port)
+        startTelemetryLoop()
     }
 
     public func stop() {
+        telemetryTimer?.cancel()
+        telemetryTimer = nil
         usbDiscoveryTimer?.cancel()
         usbDiscoveryTimer = nil
         usbAOAManager.stopWatching()
@@ -300,6 +309,34 @@ public final class TransportCoordinator: @unchecked Sendable {
         }
         timer.resume()
         self.usbDiscoveryTimer = timer
+    }
+
+    private func startTelemetryLoop() {
+        telemetryTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: ioQueue)
+        timer.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+        timer.setEventHandler { [weak self] in
+            self?.sendTelemetryPing()
+        }
+        timer.resume()
+        self.telemetryTimer = timer
+    }
+
+    private func sendTelemetryPing() {
+        let nowUs = DispatchTime.now().uptimeNanoseconds / 1_000
+        var ping = hs_telemetry_ping_t(
+            host_timestamp_us: nowUs,
+            last_decoded_frame_id: 0,
+            packets_lost_recent: 0,
+            decode_time_us: 0
+        )
+        let payload = Data(bytes: &ping, count: MemoryLayout<hs_telemetry_ping_t>.size)
+
+        if let udp = self.activeUDPConnection {
+            self.sendRawPacket(type: UInt8(HS_PKT_PONG_TELEMETRY.rawValue), flags: 0, sequence: &self.audioSequence, payload: payload, on: udp)
+        } else if let tcp = self.activeTCPConnections.first {
+            self.sendRawPacket(type: UInt8(HS_PKT_PONG_TELEMETRY.rawValue), flags: 0, sequence: &self.audioSequence, payload: payload, on: tcp)
+        }
     }
 
     /// Automatic USB-C Tunnel Setup: Runs `adb reverse tcp:9453 tcp:9453` whenever an Android device is plugged in over USB-C.
@@ -599,6 +636,18 @@ public final class TransportCoordinator: @unchecked Sendable {
                 guard payloadBytes >= MemoryLayout<hs_video_nack_t>.size else { return }
                 let nack = payloadPtr.assumingMemoryBound(to: hs_video_nack_t.self).pointee
                 delegate?.transportDidReceiveVideoNack(nack)
+
+            case HS_PKT_PING_TELEMETRY:
+                guard payloadBytes >= MemoryLayout<hs_telemetry_ping_t>.size else { return }
+                let ping = payloadPtr.assumingMemoryBound(to: hs_telemetry_ping_t.self).pointee
+                let nowUs = DispatchTime.now().uptimeNanoseconds / 1_000
+                let rttUs = nowUs >= ping.host_timestamp_us ? (nowUs - ping.host_timestamp_us) : 0
+                delegate?.transportDidUpdateRTT(rttMicroseconds: rttUs)
+                delegate?.transportDidReceiveTelemetry(
+                    rttMicroseconds: rttUs,
+                    packetsLost: ping.packets_lost_recent,
+                    decodeTimeUs: ping.decode_time_us
+                )
 
             default:
                 break

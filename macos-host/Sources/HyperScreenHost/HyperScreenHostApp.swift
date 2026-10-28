@@ -334,6 +334,40 @@ extension HyperScreenCoordinator: HyperScreenTransportDelegate {
             self.rttMs = Double(rttMicroseconds) / 1_000.0
         }
     }
+
+    nonisolated public func transportDidReceiveTelemetry(rttMicroseconds: UInt64, packetsLost: UInt16, decodeTimeUs: UInt16) {
+        Task { @MainActor in
+            self.rttMs = Double(rttMicroseconds) / 1_000.0
+            self.adjustAdaptiveBitrate(rttUs: rttMicroseconds, packetsLost: packetsLost)
+        }
+    }
+
+    @MainActor
+    private func adjustAdaptiveBitrate(rttUs: UInt64, packetsLost: UInt16) {
+        guard preferredConnection == .wireless else { return }
+
+        let minBitrate = 12_000_000 // 12 Mbps floor for 1920x1200
+        let maxBitrate = 38_000_000 // 38 Mbps ceiling
+        var currentBps = self.bitrateMbps * 1_000_000
+
+        // Multiplicative decrease (-15%) on congestion or packet loss or latency > 45ms
+        if packetsLost > 0 || rttUs > 45_000 {
+            let reduced = max(minBitrate, Int(Double(currentBps) * 0.85))
+            if reduced != currentBps {
+                currentBps = reduced
+                self.bitrateMbps = max(currentBps / 1_000_000, 12)
+                self.videoEncoder.setAdaptiveBitrate(bps: currentBps)
+            }
+        } else if rttUs < 20_000 && packetsLost == 0 {
+            // Additive increase (+1 Mbps) when link is clear and sub-20ms
+            let increased = min(maxBitrate, currentBps + 1_000_000)
+            if increased != currentBps {
+                currentBps = increased
+                self.bitrateMbps = min(currentBps / 1_000_000, 38)
+                self.videoEncoder.setAdaptiveBitrate(bps: currentBps)
+            }
+        }
+    }
 }
 
 @main

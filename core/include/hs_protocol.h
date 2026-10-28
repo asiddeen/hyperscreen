@@ -172,6 +172,14 @@ typedef struct hs_file_chunk_header {
     uint16_t flags; /* bit0=START, bit1=END */
 } hs_file_chunk_header_t;
 
+/* 16-byte Telemetry Ping / Pong Packet (used for dynamic RTT and ABR) */
+typedef struct hs_telemetry_ping {
+    uint64_t host_timestamp_us;
+    uint32_t last_decoded_frame_id;
+    uint16_t packets_lost_recent;
+    uint16_t decode_time_us;
+} hs_telemetry_ping_t;
+
 #pragma pack(pop)
 
 /* Computes CRC-16-CCITT over a byte buffer */
@@ -213,6 +221,18 @@ size_t hs_build_video_nack_packet(
     uint16_t missing_slice_index,
     uint16_t missing_count,
     uint32_t last_decoded_frame_id,
+    uint8_t *out_buffer,
+    size_t out_capacity
+);
+
+/* Builds an `HS_PKT_PING_TELEMETRY` or `HS_PKT_PONG_TELEMETRY` packet */
+size_t hs_build_telemetry_packet(
+    uint8_t packet_type,
+    uint32_t sequence,
+    uint64_t host_timestamp_us,
+    uint32_t last_decoded_frame_id,
+    uint16_t packets_lost_recent,
+    uint16_t decode_time_us,
     uint8_t *out_buffer,
     size_t out_capacity
 );

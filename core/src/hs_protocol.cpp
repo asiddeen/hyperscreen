@@ -150,6 +150,38 @@ size_t hs_build_video_nack_packet(
     return total_len;
 }
 
+size_t hs_build_telemetry_packet(
+    uint8_t packet_type,
+    uint32_t sequence,
+    uint64_t host_timestamp_us,
+    uint32_t last_decoded_frame_id,
+    uint16_t packets_lost_recent,
+    uint16_t decode_time_us,
+    uint8_t *out_buffer,
+    size_t out_capacity
+) {
+    const size_t total_len = sizeof(hs_packet_header_t) + sizeof(hs_telemetry_ping_t);
+    if (!out_buffer || out_capacity < total_len) {
+        return 0;
+    }
+    auto *hdr = reinterpret_cast<hs_packet_header_t *>(out_buffer);
+    auto *telem = reinterpret_cast<hs_telemetry_ping_t *>(out_buffer + sizeof(hs_packet_header_t));
+
+    telem->host_timestamp_us = host_timestamp_us;
+    telem->last_decoded_frame_id = last_decoded_frame_id;
+    telem->packets_lost_recent = packets_lost_recent;
+    telem->decode_time_us = decode_time_us;
+
+    hs_packet_header_init(
+        hdr,
+        packet_type,
+        sequence,
+        static_cast<uint32_t>(sizeof(hs_telemetry_ping_t)),
+        0
+    );
+    return total_len;
+}
+
 struct hs_frame_reassembler {
     size_t max_slices;
     size_t max_slice_bytes;

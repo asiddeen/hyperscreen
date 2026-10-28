@@ -115,6 +115,14 @@ object NativeCoreBridge {
         lastDecodedFrameId: Int
     ): ByteArray?
 
+    external fun nativeBuildTelemetryPingPacket(
+        sequence: Int,
+        hostTimestampUs: Long,
+        lastDecodedFrameId: Int,
+        packetsLostRecent: Int,
+        decodeTimeUs: Int
+    ): ByteArray?
+
     external fun nativeWriteStylusEventToFd(
         fd: Int,
         sequence: Int,
@@ -212,6 +220,7 @@ class LowLatencyMediaCodec(
     private val isRunning = AtomicBoolean(false)
     private val fallbackStage = AtomicInteger(0)
     @Volatile private var lastKeyframeBytes: ByteArray? = null
+    @Volatile var lastDecodeLatencyUs: Int = 4000
     private var renderedFramesCount = 0L
 
     fun start() {
@@ -272,10 +281,17 @@ class LowLatencyMediaCodec(
                 info: MediaCodec.BufferInfo
             ) {
                 runCatching {
+                    val nowUs = System.nanoTime() / 1_000L
+                    if (info.presentationTimeUs > 0) {
+                        val lat = (nowUs - info.presentationTimeUs).toInt()
+                        if (lat in 500..100_000) {
+                            lastDecodeLatencyUs = lat
+                        }
+                    }
                     mc.releaseOutputBuffer(index, true)
                     renderedFramesCount++
                     if (renderedFramesCount == 1L || renderedFramesCount % 120L == 0L) {
-                        Log.i("HyperScreen", "Rendered video frames: $renderedFramesCount (stage=$stage)")
+                        Log.i("HyperScreen", "Rendered video frames: $renderedFramesCount (stage=$stage, lat=${lastDecodeLatencyUs}us)")
                     }
                 }
             }
@@ -3118,6 +3134,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             val frameMeta = LongArray(3)
             val hdrBuf = ByteArray(16)
             val payloadBuf = ByteArray(65536)
+            var lastDecodedFrameId = 0
 
             while (isAppRunning.get()) {
                 val targetHost = preferredHostIp
@@ -3219,6 +3236,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                     frameMeta
                                 )
                                 if (frameBytes > 0) {
+                                    lastDecodedFrameId = frameMeta[0].toInt()
                                     cursorOverlay.isConnecting = false
                                     cursorOverlay.isConnectionError = false
                                     if (!cursorOverlay.hasReceivedVideoFrame) {
@@ -3236,6 +3254,26 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                     }
                                     directOutFrameBuf.position(0)
                                     decoder?.submitAnnexBNaluDirect(directOutFrameBuf, frameBytes)
+                                }
+                            } else if (pktType == 0x09 /* HS_PKT_PONG_TELEMETRY */) {
+                                if (payloadLen >= 16) {
+                                    directPktBuf.clear()
+                                    directPktBuf.put(payloadBuf, 0, payloadLen)
+                                    val hostTs = directPktBuf.getLong(0)
+                                    val decLat = decoder?.lastDecodeLatencyUs ?: 4000
+                                    val pingPacket = NativeCoreBridge.nativeBuildTelemetryPingPacket(
+                                        outSequence.getAndIncrement(),
+                                        hostTs,
+                                        lastDecodedFrameId,
+                                        0,
+                                        decLat
+                                    )
+                                    if (pingPacket != null) {
+                                        synchronized(out) {
+                                            out.write(pingPacket)
+                                            out.flush()
+                                        }
+                                    }
                                 }
                             } else if (pktType == 0x01 /* HS_PKT_SERVER_HELLO */) {
                                 if (payloadLen >= 32) {
@@ -3435,6 +3473,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                     var lastSeenFrameId = 0
                     var lastDecodedFrameId = 0
                     var lastNackSentTimeMs = 0L
+                    var recentLossCount = 0
 
                     while (isAppRunning.get() && !isBackgrounded.get() && !isUserDisconnected && !Thread.currentThread().isInterrupted && activeUdpSocket.get() === socket) {
                         val received = runCatching {
@@ -3475,6 +3514,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                             if (pktType == 0x02 && len >= 16 + 12) {
                                 val incomingFid = pktBuf.getInt(16)
                                 if (lastSeenFrameId > 0 && incomingFid > lastSeenFrameId + 1) {
+                                    recentLossCount += (incomingFid - lastSeenFrameId - 1)
                                     // Missing frame detected on Wi-Fi - emit rate-limited PLI NACK to trigger IDR (max 1 NACK per 100ms)
                                     val now = android.os.SystemClock.uptimeMillis()
                                     if (now - lastNackSentTimeMs >= 100L) {
@@ -3520,6 +3560,23 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                                 }
                                 outFrameBuf.position(0)
                                 decoder?.submitAnnexBNaluDirect(outFrameBuf, frameBytes)
+                            }
+                        } else if (pktType == 0x09 /* HS_PKT_PONG_TELEMETRY */) {
+                            if (len >= 16 + 16) {
+                                val hostTs = pktBuf.getLong(16)
+                                val decLat = decoder?.lastDecodeLatencyUs ?: 4000
+                                val losses = recentLossCount
+                                recentLossCount = 0
+                                val pingPacket = NativeCoreBridge.nativeBuildTelemetryPingPacket(
+                                    outSequence.getAndIncrement(),
+                                    hostTs,
+                                    lastDecodedFrameId,
+                                    losses,
+                                    decLat
+                                )
+                                if (pingPacket != null) {
+                                    runCatching { socket.send(DatagramPacket(pingPacket, pingPacket.size, target)) }
+                                }
                             }
                         } else if (pktType == 0x01 /* HS_PKT_SERVER_HELLO */) {
                             if (len >= 16 + 32) {
